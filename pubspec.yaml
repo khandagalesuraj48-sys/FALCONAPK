@@ -1,0 +1,46 @@
+name: falcon
+description: FALCON – Food & Site Operations (Sketchline Industries). The phone app – its own screens on FALCON's own database and server.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.9.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.18.0     # sign-in (WhatsApp code), the database's own rules (RLS), live changes, files
+  go_router: ^18.1.0            # the screens' addresses – the same as the web's (/app, /owner, /driver …)
+  flutter_svg: ^2.5.0           # the approved icons (Lucide, ISC licence) – assets/icons
+  http: ^1.6.0                  # FALCON's own server steps (/api/…)
+  crypto: ^3.0.8                # this phone's token is sent only as its fingerprint (SHA-256)
+  shared_preferences: ^2.5.0    # this phone's token, the chosen mess
+  mobile_scanner: ">=7.5.0 <8.0.0"  # the mess counter's QR
+  image_picker: ^1.2.0          # a complaint's photo, the registration photo
+  record: ^7.2.0                # a complaint's voice
+  path_provider: ^2.1.6
+  geolocator: ^14.1.0           # the van's place – only while it is on the way
+  url_launcher: ^6.3.0          # call the driver / the person
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+  fonts:
+    - family: Schibsted
+      fonts:
+        - asset: assets/fonts/SchibstedGrotesk-400.ttf
+          weight: 400
+        - asset: assets/fonts/SchibstedGrotesk-500.ttf
+          weight: 500
+        - asset: assets/fonts/SchibstedGrotesk-600.ttf
+          weight: 600
+        - asset: assets/fonts/SchibstedGrotesk-700.ttf
+          weight: 700
+        - asset: assets/fonts/SchibstedGrotesk-800.ttf
+          weight: 800

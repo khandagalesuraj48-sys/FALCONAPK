@@ -1,0 +1,80 @@
+# FALCON's Android app file (APK), built on every push: the app is checked (analyze, tests) and built. On a push to main the APK
+# is also put up as a GitHub Release ("Latest") – the file to download and install.
+# The settings come from GitHub → Settings → Secrets and variables → Actions:
+#   Variables: FALCON_SUPABASE_URL, FALCON_SUPABASE_KEY (the PUBLISHABLE key – public by design), FALCON_SERVER, FALCON_COMPANY
+#   Secrets (optional – Sketchline's own signing key): FALCON_KEYSTORE_B64, FALCON_KEYSTORE_PASSWORD, FALCON_KEY_ALIAS, FALCON_KEY_PASSWORD
+# Without the variables the app opens its "not connected" page; without the key it is signed with the debug key (said in the run).
+name: build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.1
+          cache: true
+      - name: Packages
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Tests
+        run: flutter test --reporter expanded
+      - name: Signing key (when given)
+        env:
+          KS: ${{ secrets.FALCON_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KS" ]; then echo "::warning::No signing key (FALCON_KEYSTORE_B64) – this APK is signed with the debug key."; exit 0; fi
+          printf '%s' "$KS" | base64 -d > "$RUNNER_TEMP/falcon.jks"
+          echo "FALCON_KEYSTORE_PATH=$RUNNER_TEMP/falcon.jks" >> "$GITHUB_ENV"
+      - name: Android app (APK)
+        env:
+          FALCON_KEYSTORE_PASSWORD: ${{ secrets.FALCON_KEYSTORE_PASSWORD }}
+          FALCON_KEY_ALIAS: ${{ secrets.FALCON_KEY_ALIAS }}
+          FALCON_KEY_PASSWORD: ${{ secrets.FALCON_KEY_PASSWORD }}
+        run: |
+          if [ -z "${{ vars.FALCON_SUPABASE_URL }}" ] || [ -z "${{ vars.FALCON_SUPABASE_KEY }}" ]; then
+            echo "::warning::FALCON_SUPABASE_URL / FALCON_SUPABASE_KEY are not set (Settings → Variables) – this app opens its 'not connected' page."
+          fi
+          V=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          flutter build apk --release --build-number=${{ github.run_number }} \
+            --dart-define=FALCON_SUPABASE_URL=${{ vars.FALCON_SUPABASE_URL }} \
+            --dart-define=FALCON_SUPABASE_KEY=${{ vars.FALCON_SUPABASE_KEY }} \
+            --dart-define=FALCON_SERVER=${{ vars.FALCON_SERVER || 'https://wolf-rcl-erp.vercel.app' }} \
+            --dart-define=FALCON_COMPANY=${{ vars.FALCON_COMPANY || 'RCL' }} \
+            --dart-define=FALCON_VERSION=$V
+          mkdir -p out && cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-${{ github.run_number }}.apk"
+          echo "APK=out/FALCON-$V-${{ github.run_number }}.apk" >> "$GITHUB_ENV"
+          echo "VER=$V" >> "$GITHUB_ENV"
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FALCON-apk
+          path: out/*.apk
+          retention-days: 30
+      - name: Release (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VER }}-${{ github.run_number }}
+          name: FALCON ${{ env.VER }} (build ${{ github.run_number }})
+          make_latest: true
+          files: ${{ env.APK }}
+          body: |
+            FALCON – Food & Site Operations (Sketchline Industries). Android app file: download the .apk below and install it.
+            Built from ${{ github.sha }}.
