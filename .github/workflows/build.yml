@@ -80,6 +80,21 @@ jobs:
           name: FALCON-apk
           path: out/*.apk
           retention-days: 30
+      # (23-11-2026, his word: "adhi mala APK de") a TEST build of the app's working branch, to install on a phone before main exists:
+      # marked "Pre-release", never "Latest".
+      - name: Test build (falcon-app)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/falcon-app'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: FALCON ${{ env.VER }} – test build ${{ github.run_number }}
+          prerelease: true
+          make_latest: false
+          files: ${{ env.APK }}
+          body: |
+            TEST build of FALCON – Food & Site Operations (Sketchline Industries), from the branch falcon-app (${{ github.sha }}).
+            Download the .apk below on the phone and install it. Not the final app: parts still come in the next builds.
       - name: Release (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2

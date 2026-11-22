@@ -116,5 +116,16 @@ class _Soon extends StatelessWidget {
   const _Soon(this.what);
   final String what;
   @override
-  Widget build(BuildContext context) => Screen(top: Top(title: what), children: const [Loading()]);
+  Widget build(BuildContext context) {
+    final s = SessionScope.of(context);
+    return Screen(top: Top(title: what), children: [
+      Empty(
+        icon: 'clock',
+        title: 'Coming in the next build',
+        text: 'You are signed in${s.name.isEmpty ? '' : ' as ${s.name}'}. This part of FALCON is being moved into the app – '
+            'until then it is on the web.',
+        action: Btn('Sign out', icon: 'log-out', kind: BtnKind.ghost, onTap: () => s.signOut()),
+      ),
+    ]);
+  }
 }
