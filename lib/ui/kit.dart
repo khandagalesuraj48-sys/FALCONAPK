@@ -189,7 +189,7 @@ class Tag extends StatelessWidget {
       );
 }
 
-enum BtnKind { ink, leaf, sf, navy, red, ghost, gold, whatsapp }
+enum BtnKind { ink, leaf, sf, navy, red, ghost, gold, whatsapp, plum }
 
 /// The big button (.btn) – busy shows a spinner and stops a second tap.
 class Btn extends StatelessWidget {
@@ -209,6 +209,7 @@ class Btn extends StatelessWidget {
       BtnKind.red => (C.red, Colors.white, null),
       BtnKind.gold => (C.gold, const Color(0xFF1D1404), null),
       BtnKind.whatsapp => (C.whatsapp, Colors.white, null),
+      BtnKind.plum => (C.plumD, Colors.white, null),
       BtnKind.ghost => dark ? (Colors.transparent, Colors.white, C.navy3) : (Colors.white, C.ink, C.line2),
     };
     final off = onTap == null || busy;

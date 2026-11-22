@@ -5,10 +5,12 @@ import 'package:go_router/go_router.dart';
 
 import 'core/prefs.dart';
 import 'core/session.dart';
+import 'screens/employee.dart' as emp;
+import 'screens/guest.dart' as guest;
 import 'screens/start.dart' as start;
 import 'ui/kit.dart';
 
-const emp = ['employee', 'guest'];
+const emp_ = ['employee', 'guest'];
 const own = ['mess_owner', 'mess_operator'];
 const waitingStates = ['pending_verification', 'mobile_pending', 'whatsapp_verified', 'id_not_found', 'new_registration'];
 
@@ -108,8 +110,31 @@ GoRouter buildRouter(Session session) => GoRouter(
 
 /// The roles' screens – added by each part of the app.
 List<RouteBase> appRoutes() => [
-      _n('/app', ['employee'], (_) => const _Soon('My meals')),
-      _n('/guest', ['guest'], (_) => const _Soon('Guest')),
+      // the employee's app (Main, e02–e16) – a guest uses the same meal, parcel, order and complaint screens
+      _n('/app', ['employee'], (_) => const emp.EmpHome()),
+      _n('/app/scan', emp_, (_) => const emp.Scan()),
+      _n('/app/meal', emp_, (s) => emp.MealAtMess(counter: s.uri.queryParameters['counter'])),
+      _n('/app/parcel', emp_, (_) => const emp.Parcel()),
+      _n('/app/section', emp_, (_) => const emp.SectionPick()),
+      _n('/app/menu', emp_, (_) => const emp.Menu()),
+      _n('/app/menu/poster', emp_, (s) => emp.Poster(date: s.uri.queryParameters['d'], meal: s.uri.queryParameters['m'])),
+      _n('/app/orders', emp_, (_) => const emp.Orders()),
+      _n('/app/orders/:id', emp_, (s) => emp.OrderStatus(id: s.pathParameters['id']!)),
+      _n('/app/orders/:id/track', emp_, (s) => emp.Track(id: s.pathParameters['id']!)),
+      _n('/app/orders/:id/driver', emp_, (s) => emp.DriverCard(id: s.pathParameters['id']!)),
+      _n('/app/orders/:id/confirm', emp_, (s) => emp.ShowCode(id: s.pathParameters['id']!)),
+      _n('/app/orders/:id/quantity', emp_, (s) => emp.Received(id: s.pathParameters['id']!)),
+      _n('/app/orders/:id/review', emp_, (s) => emp.Review(id: s.pathParameters['id']!)),
+      _n('/app/complaints/new', emp_, (s) => emp.Complaint(order: s.uri.queryParameters['order'], cat: s.uri.queryParameters['cat'])),
+      _n('/app/complaints/:id', emp_, (s) => emp.ComplaintTicket(id: s.pathParameters['id']!)),
+      _n('/app/guest', ['employee'], (_) => const emp.GuestRequest()),
+      _n('/app/group', ['employee'], (_) => const emp.Group()),
+      _n('/app/me', emp_, (_) => const emp.Me()),
+      _n('/app/notifications', emp_, (_) => const emp.Me()),
+      // the guest (g01–g03)
+      _n('/guest', ['guest'], (_) => const guest.GuestHome()),
+      _n('/guest/welcome', ['guest'], (_) => const guest.GuestWelcome()),
+      _n('/guest/history', ['guest'], (_) => const guest.GuestHistory()),
       _n('/owner', own, (_) => const _Soon('My mess')),
       _n('/driver', ['driver'], (_) => const _Soon('My deliveries')),
     ];
