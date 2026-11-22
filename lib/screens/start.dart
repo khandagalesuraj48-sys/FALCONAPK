@@ -93,7 +93,7 @@ class Who extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(24, 40 + MediaQuery.of(context).padding.top, 24, 34),
           decoration: const BoxDecoration(color: C.navy, borderRadius: BorderRadius.vertical(bottom: Radius.circular(32))),
           child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Tile('utensils', tone: Tone(C.navy2, C.gold), size: 56),
+            Logo(size: 64),
             SizedBox(height: 18),
             Text('Welcome to\nFALCON', style: TextStyle(fontFamily: font, fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -0.75, height: 1.1, color: Colors.white)),
             SizedBox(height: 10),

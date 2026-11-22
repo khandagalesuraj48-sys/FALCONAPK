@@ -8,6 +8,7 @@ on FALCON's own database and server (the same rules as the web: `khandagalesuraj
 |---|---|
 | Settings given to the build (URL, publishable key, server) | `lib/config.dart` |
 | The look (colours, type, icons – Lucide, ISC; font Schibsted Grotesk, SIL OFL) | `lib/ui/look.dart`, `lib/ui/kit.dart`, `assets/` |
+| The logo (B – the falcon on the plate, a fork and a knife crossed behind; his pick of 23-11-2026; drawn for FALCON) | the app icon `android/app/src/main/res/mipmap-*` (adaptive on Android 8+), the opening screen `drawable-*/launch_logo.png`, inside the app `assets/brand/falcon-logo.png` (`Logo` in `lib/ui/kit.dart`) |
 | Data, session, formats | `lib/core/` |
 | Screens (sign-in and registration, employee, guest, mess owner, driver) | `lib/screens/` |
 | Addresses and who may open what | `lib/routes.dart` |

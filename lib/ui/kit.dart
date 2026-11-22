@@ -288,6 +288,18 @@ class Av extends StatelessWidget {
 }
 
 /// A rounded icon tile (.tile).
+/// FALCON's logo (B – the falcon on the plate, a fork and a knife crossed behind; approved 23-11-2026).
+class Logo extends StatelessWidget {
+  const Logo({super.key, this.size = 64});
+  final double size;
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: 'FALCON',
+        image: true,
+        child: Image.asset('assets/brand/falcon-logo.png', width: size, height: size, filterQuality: FilterQuality.high),
+      );
+}
+
 class Tile extends StatelessWidget {
   const Tile(this.icon, {super.key, this.tone = Tone.sf, this.size = 48, this.iconSize});
   final String icon;
