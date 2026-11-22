@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
 import 'db.dart';
+import 'door.dart';
 import 'fmt.dart';
 
 enum Status { loading, off, signedout, noperson, ready, stopped }
@@ -110,7 +111,7 @@ class Session extends ChangeNotifier {
       if (p == null && (s.user.phone ?? '').isNotEmpty) {
         // signed in, not in FALCON yet: an active HR employee is known by his mobile; the first System Admin is made
         try {
-          final w = await api('/api/welcome', {});
+          final w = await api('/api/welcome', {'company': Door.theCode});
           if (w['person'] != null) p = await one(sb.from('people').select().eq('auth_user_id', s.user.id).limit(1));
         } catch (_) {/* he registers */}
       }

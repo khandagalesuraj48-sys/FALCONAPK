@@ -1,6 +1,9 @@
-// Boards r01–r08 (first time: who are you, RCL ID, found in HR, the WhatsApp code, done / not found / new registration /
-// temporary), the guest's first registration, signing in again with the mobile, a code again, "where you stand" and choosing –
-// the app's own screens on the same server steps as the web (src/screens/start.tsx).
+// Boards r01–r08 (first time: the company code, the employee code, found in HR, the WhatsApp code, done / not found / new
+// registration / temporary), the guest's first registration, a mess contractor's own code, signing in again with the mobile, a code
+// again, "where you stand" and choosing – the app's own screens on the same server steps as the web (src/screens/start.tsx).
+// (23-11-2026, his decision: "I work for RCL as nko … company code takaych … mag employee code … details … OTP" – the app names no
+// company until its code is typed; a contractor's own code; his answers: the full details before the code (mobile masked), "I am a
+// guest" under the employee code, only the mobiles the Admin gave for the contractor.)
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../core/db.dart';
+import '../core/door.dart';
 import '../core/fmt.dart';
 import '../core/session.dart';
 import '../ui/kit.dart';
@@ -18,7 +22,7 @@ import '../ui/look.dart';
 
 /// What the steps carry from one board to the next (this run of the app only).
 class Flow {
-  static String? mode; // rcl | new | guest | back
+  static String? mode; // rcl | new | guest | back | contractor
   static String? rcl, token, result, phone, site, section, sentTo;
   static Rec hr = {};
   static Map<String, String> form = {};
@@ -28,8 +32,17 @@ class Flow {
 
 const _whatsappCode = 'Wait a minute before asking a new code.';
 
+/// Supabase's words for a code that was not sent; FALCON's own limit ("Too many codes …") is passed on as it is.
+String _codeError(Object e, [String other = 'The code could not be sent – try again.']) {
+  if (e is AuthException) {
+    if (RegExp(r'^Too many codes', caseSensitive: false).hasMatch(e.message)) return e.message;
+    if (e.statusCode == '429') return _whatsappCode;
+  }
+  return other;
+}
+
 Future<Rec?> _places() async {
-  final r = await call<dynamic>('start_places', {'p_company': Config.company});
+  final r = await call<dynamic>('start_places', {'p_company': Door.theCompany});
   return r is Map ? Map<String, dynamic>.from(r) : null;
 }
 
@@ -80,10 +93,27 @@ Widget _foot(List<Widget> children) => Container(
           children: [for (var i = 0; i < children.length; i++) ...[if (i > 0) const SizedBox(height: 8), children[i]]])),
     );
 
-// ── r01 · First time – who are you? ──
-class Who extends StatelessWidget {
+// ── r01 · First time – the company code ──
+class Who extends StatefulWidget {
   const Who({super.key, this.error});
   final String? error;
+  @override
+  State<Who> createState() => _WhoState();
+}
+
+class _WhoState extends State<Who> with Act {
+  final code = TextEditingController(text: Door.saved?.code ?? '');
+  @override
+  void dispose() { code.dispose(); super.dispose(); }
+  Future<void> go() => act(() async {
+        final c = code.text.trim().toUpperCase();
+        if (!RegExp(r'^[A-Z0-9]{2,12}$').hasMatch(c)) throw DbError('Type the code as your office gave it – letters and numbers.');
+        final d = Door.from(await api('/api/start', {'door': c}, withToken: false));
+        if (d == null) throw DbError('No company or contractor has this code – check it with your office.');
+        Door.saved = d;
+        Flow.clear();
+        if (mounted) context.push(d.isContractor ? '/start/contractor' : '/start/employee');
+      });
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -103,14 +133,16 @@ class Who extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 22, 20, 26),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (error != null) ...[Failed(error!), const SizedBox(height: 14)],
-            Text('First time here – who are you?', style: T.h2.copyWith(fontSize: 19)),
+            if (widget.error != null) ...[Failed(widget.error!), const SizedBox(height: 14)],
+            Text('Your company code', style: T.h2.copyWith(fontSize: 19)),
+            const SizedBox(height: 4),
+            Text('Your office gives it – the same for everybody there. A mess contractor has his own code.', style: T.sm),
             const SizedBox(height: 14),
-            _BigChoice(icon: 'hard-hat', tone: Tone.leaf, title: 'I work for RCL', sub: 'Staff, operator, driver, labour – with or without an RCL ID',
-                onTap: () { Flow.clear(); context.push('/start/rcl-id'); }),
-            const SizedBox(height: 14),
-            _BigChoice(icon: 'user-plus', tone: Tone.plum, title: 'I am a guest or visitor', sub: 'Client, officer, subcontractor, vendor, visitor',
-                onTap: () { Flow.clear(); context.push('/guest/new'); }),
+            Input(controller: code, big: true, icon: 'building-2', hint: 'Company code', maxLength: 12, autofocus: true, caps: TextCapitalization.characters, onChanged: (_) => setState(() {})),
+            const SizedBox(height: 10),
+            ErrorLine(error),
+            const SizedBox(height: 4),
+            Btn('Continue', icon: 'arrow-right', kind: BtnKind.leaf, busy: busy, onTap: code.text.trim().length < 2 ? null : go),
             const SizedBox(height: 14),
             FCard(radius: 16, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12), child: Row(children: [
               const Ico('shield-check', size: 18, color: C.muted), const SizedBox(width: 10),
@@ -126,26 +158,7 @@ class Who extends StatelessWidget {
   }
 }
 
-class _BigChoice extends StatelessWidget {
-  const _BigChoice({required this.icon, required this.tone, required this.title, required this.sub, required this.onTap});
-  final String icon, title, sub;
-  final Tone tone;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => FCard(
-        lift: true, onTap: onTap, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-        child: Row(children: [
-          Tile(icon, tone: tone, size: 56),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: T.b.copyWith(fontSize: 18)), const SizedBox(height: 2), Text(sub, style: T.sm),
-          ])),
-          const Ico('chevron-right'),
-        ]),
-      );
-}
-
-// ── r02 · Your RCL ID ──
+// ── r02 · Your employee code ──
 class RclId extends StatefulWidget {
   const RclId({super.key});
   @override
@@ -158,39 +171,55 @@ class _RclIdState extends State<RclId> with Act {
   void dispose() { id.dispose(); super.dispose(); }
   Future<void> find() => act(() async {
         final rcl = id.text.trim().toUpperCase();
-        if (!RegExp(r'^[A-Z0-9-]{2,20}$').hasMatch(rcl)) throw DbError('Type the ID as on your card – letters, numbers and "-".');
-        final r = await api('/api/start', {'rcl_id': rcl}, withToken: false);
+        if (!RegExp(r'^[A-Z0-9-]{2,20}$').hasMatch(rcl)) throw DbError('Type the code as on your card – letters, numbers and "-".');
+        final r = await api('/api/start', {'company': Door.theCode, 'rcl_id': rcl}, withToken: false);
         Flow.mode = 'rcl'; Flow.rcl = rcl; Flow.result = '${r['result']}'; Flow.token = r['token'] as String?; Flow.hr = r;
         if (!mounted) return;
         context.push(r['result'] == 'found' ? '/start/found' : '/start/not-found');
       });
   @override
-  Widget build(BuildContext context) => Screen(
-        top: const Top(title: 'Your RCL ID', sub: 'Step 1 of 3 · RCL employee', back: '/start'),
+  Widget build(BuildContext context) {
+    final door = Door.saved;
+    if (door == null || door.isContractor) return const Gone();
+    return Screen(
+        top: Top(title: 'Your employee code', sub: 'Step 1 of 3 · ${door.companyName}', back: '/start'),
         children: [
           const Steps(1, 3),
-          Text('Enter your employee ID', style: T.h1.copyWith(fontSize: 26)),
+          Text('Enter your employee code', style: T.h1.copyWith(fontSize: 26)),
           Text('It is on your ID card and salary slip.', style: T.sm),
-          Input(controller: id, big: true, icon: 'id-card', hint: 'VTR-0000', maxLength: 20, autofocus: true, caps: TextCapitalization.characters, onChanged: (_) => setState(() {})),
-          const InfoLine('Looked up in the RCL HR employee list – nothing else is asked if it is there.'),
+          Input(controller: id, big: true, icon: 'id-card', hint: '${door.company}000', maxLength: 20, autofocus: true, caps: TextCapitalization.characters, onChanged: (_) => setState(() {})),
+          InfoLine('Looked up in ${door.companyName}\'s HR list – nothing else is asked if it is there.'),
           ErrorLine(error),
           Btn('Find me', icon: 'search', kind: BtnKind.leaf, busy: busy, onTap: id.text.trim().isEmpty ? null : find),
+          FCard(
+            lift: true,
+            padding: const EdgeInsets.all(14),
+            onTap: () { Flow.clear(); context.push('/guest/new'); },
+            child: Row(children: [
+              const Tile('user-plus', tone: Tone.plum, size: 40), const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('I am a guest or visitor', style: T.b), Text('Client, officer, subcontractor, vendor, visitor', style: T.xs),
+              ])),
+              const Ico('chevron-right', size: 18),
+            ]),
+          ),
           FCard(
             padding: const EdgeInsets.all(14),
             onTap: () { Flow.mode = 'new'; Flow.rcl = id.text.trim().isEmpty ? null : id.text.trim().toUpperCase(); context.push('/start/new'); },
             child: Row(children: [
               const Tile('user-plus', tone: Tone.cream, size: 40), const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('No RCL ID yet?', style: T.b), Text('New joiner or HR has not added you – register here', style: T.xs),
+                Text('No employee code yet?', style: T.b), Text('New joiner or HR has not added you – register here', style: T.xs),
               ])),
               const Ico('chevron-right', size: 18),
             ]),
           ),
         ],
       );
+  }
 }
 
-// ── r03 · Is this you? (from RCL HR) ──
+// ── r03 · Is this you? (from the company's HR) ──
 class Found extends StatefulWidget {
   const Found({super.key});
   @override
@@ -225,14 +254,14 @@ class _FoundState extends State<Found> with Act {
           child: Row(children: [Expanded(child: Text(k, style: T.sm)), Text(v == null || v.isEmpty ? '–' : v, style: T.b.copyWith(fontSize: 14)), const SizedBox(width: 8), const Ico('lock', size: 14, color: C.muted)]),
         );
     return Screen(
-      top: const Top(title: 'Is this you?', sub: 'Step 2 of 3 · from RCL HR', back: '/start/rcl-id'),
+      top: Top(title: 'Is this you?', sub: 'Step 2 of 3 · from ${Door.saved?.companyName ?? 'your company'}\'s HR', back: '/start/employee'),
       foot: _foot([Btn('Yes – send code on WhatsApp', icon: 'message-circle', kind: BtnKind.whatsapp, busy: busy, onTap: send)]),
       children: [
         const Steps(2, 3),
         FCard(child: Row(children: [
           Av(initials('${hr['name']}'), size: 56),
           const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${hr['name']}', style: T.b.copyWith(fontSize: 19)), Text('RCL ID ${Flow.rcl}', style: T.sm)])),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${hr['name']}', style: T.b.copyWith(fontSize: 19)), Text('Employee code ${Flow.rcl}', style: T.sm)])),
           const Chip2('Found', icon: 'badge-check', tone: Tone.leaf, height: 26),
         ])),
         FCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Column(children: [
@@ -290,7 +319,7 @@ class _CodeState extends State<Code> with Act {
 
   Future<void> verify(String c) => act(() async {
         final s = SessionScope.read(context);
-        if (Flow.mode == 'rcl') {
+        if (Flow.mode == 'rcl' || Flow.mode == 'contractor') {
           final r = await api('/api/start', {'token': Flow.token, 'code': c}, withToken: false);
           final ses = Map<String, dynamic>.from(r['session'] as Map);
           await sb.auth.setSession('${ses['refresh_token']}');
@@ -301,9 +330,9 @@ class _CodeState extends State<Code> with Act {
         final uid = sb.auth.currentUser!.id;
         // who is this? – already in FALCON, made by the office, an active HR employee (by his mobile), or the first System Admin
         Rec w;
-        try { w = await api('/api/welcome', {}); } catch (_) { w = {}; }
+        try { w = await api('/api/welcome', {'company': Door.theCode}); } catch (_) { w = {}; }
         if (w['person'] != null) { await s.refresh(); if (mounted) context.go('/'); return; }
-        if (Flow.mode == 'back') {
+        if (Flow.mode == 'back' || Flow.mode == 'contractor') {
           await sb.auth.signOut();
           throw DbError('This mobile is not in FALCON or in HR yet – go back and register.');
         }
@@ -320,8 +349,8 @@ class _CodeState extends State<Code> with Act {
           }
           final f = Flow.form;
           await api('/api/register', Flow.mode == 'guest'
-              ? {'kind': 'guest', 'full_name': f['name'], 'organisation': f['organisation'], 'designation': f['designation']}
-              : {'kind': 'employee', 'full_name': Flow.mode == 'rcl' ? Flow.hr['name'] : f['name'], 'rcl_id': Flow.rcl, 'site': Flow.site, 'section': Flow.section,
+              ? {'company': Door.theCode, 'kind': 'guest', 'full_name': f['name'], 'organisation': f['organisation'], 'designation': f['designation']}
+              : {'company': Door.theCode, 'kind': 'employee', 'full_name': Flow.mode == 'rcl' ? Flow.hr['name'] : f['name'], 'rcl_id': Flow.rcl, 'site': Flow.site, 'section': Flow.section,
                  'category': f['category'], 'work_role': f['work_role'], 'works_with': f['works_with'], 'photo': photo});
         }
         await s.refresh();
@@ -329,10 +358,10 @@ class _CodeState extends State<Code> with Act {
       });
 
   Future<void> again() => act(() async {
-        if (Flow.mode == 'rcl') {
+        if (Flow.mode == 'rcl' || Flow.mode == 'contractor') {
           await api('/api/start', {'token': Flow.token, 'send': true}, withToken: false);
         } else {
-          try { await sb.auth.signInWithOtp(phone: Flow.phone!); } catch (_) { throw DbError(_whatsappCode); }
+          try { await sb.auth.signInWithOtp(phone: Flow.phone!); } catch (e) { throw DbError(_codeError(e)); }
         }
         setState(() => wait = 60);
         _tick();
@@ -340,7 +369,8 @@ class _CodeState extends State<Code> with Act {
 
   @override
   Widget build(BuildContext context) {
-    final sentTo = Flow.mode == 'rcl' ? (Flow.sentTo ?? '') : maskMobile(Flow.phone);
+    final viaToken = Flow.mode == 'rcl' || Flow.mode == 'contractor';
+    final sentTo = viaToken ? (Flow.sentTo ?? '') : maskMobile(Flow.phone);
     return Screen(
       top: Top(title: 'Enter the code', sub: Flow.mode == 'rcl' ? 'Step 3 of 3 · WhatsApp' : 'WhatsApp', back: ''),
       children: [
@@ -363,9 +393,11 @@ class _CodeState extends State<Code> with Act {
         ErrorLine(error),
         FCard(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Ico('info', size: 18, color: C.muted), const SizedBox(width: 12),
-          Expanded(child: Text('The code proves the phone is yours. That you work for RCL is proved by HR\'s record – both are kept apart.', style: T.sm.copyWith(height: 1.45))),
+          Expanded(child: Text(Flow.mode == 'contractor'
+              ? 'The code proves the phone is yours. That it works for ${Door.saved?.name ?? 'the contractor'} was set by the company\'s Admin.'
+              : 'The code proves the phone is yours. That you work here is proved by your company\'s HR record – both are kept apart.', style: T.sm.copyWith(height: 1.45))),
         ])),
-        const InfoLine('Not your number any more? HR changes it', icon: 'phone'),
+        InfoLine(Flow.mode == 'contractor' ? 'Not your number any more? The company\'s Admin changes it' : 'Not your number any more? HR changes it', icon: 'phone'),
       ],
     );
   }
@@ -421,23 +453,23 @@ class NotFound extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final notChecked = Flow.result == 'not_checked' || Flow.result == 'no_mobile';
-    final id = Flow.rcl ?? 'this ID';
+    final id = Flow.rcl ?? 'this code';
     return Screen(
-      top: Top(title: notChecked ? 'HR could not be checked' : 'Not found in HR', sub: 'RCL ID ${Flow.rcl ?? ''}', back: '/start/rcl-id'),
+      top: Top(title: notChecked ? 'HR could not be checked' : 'Not found in HR', sub: 'Employee code ${Flow.rcl ?? ''}', back: '/start/employee'),
       children: [
         const Align(alignment: Alignment.centerLeft, child: Tile('search', tone: Tone.amber, size: 56)),
         Text(notChecked ? 'HR could not check $id now' : 'We could not find $id', style: T.h1.copyWith(fontSize: 25)),
         Text(notChecked
             ? (Flow.result == 'no_mobile' ? 'HR has no WhatsApp number for you. Register here – the Site Admin checks you.' : 'HR\'s list has not come to FALCON yet. Register here – the Site Admin checks you.')
-            : 'This happens when you joined recently, HR has not added you yet, or the ID is typed wrong.', style: T.sm.copyWith(height: 1.5)),
+            : 'This happens when you joined recently, HR has not added you yet, or the code is typed wrong.', style: T.sm.copyWith(height: 1.5)),
         const FCard(child: Column(children: [
           _Can('check', 'You can still register and eat today'),
           _Can('check', 'The Site Admin and HR are told about you'),
           _Can('check', 'When HR adds you, all your meals move to your record'),
-          _Can('x', 'No RCL ID is made up for you'),
+          _Can('x', 'No employee code is made up for you'),
         ])),
         const SizedBox(height: 10),
-        Btn('Check the ID again', icon: 'pencil', kind: BtnKind.ghost, onTap: () => context.go('/start/rcl-id')),
+        Btn('Check the code again', icon: 'pencil', kind: BtnKind.ghost, onTap: () => context.go('/start/employee')),
         Btn('Continue with new registration', icon: 'arrow-right', kind: BtnKind.leaf, onTap: () => context.push('/start/new')),
       ],
     );
@@ -475,7 +507,7 @@ class _NewRegState extends State<NewReg> with Act {
         final phone = phoneE164(mobile.text);
         if (phone == null) throw DbError('Type your 10-digit WhatsApp mobile.');
         if (site == null) throw DbError('Choose your site.');
-        try { await sb.auth.signInWithOtp(phone: phone); } on AuthException catch (e) { throw DbError(e.statusCode == '429' ? _whatsappCode : 'The code could not be sent – check the number.'); }
+        try { await sb.auth.signInWithOtp(phone: phone); } on AuthException catch (e) { throw DbError(_codeError(e, 'The code could not be sent – check the number.')); }
         Flow.mode = 'new'; Flow.phone = phone; Flow.site = site; Flow.section = section; Flow.photo = photo;
         Flow.rcl = rcl.text.trim().isEmpty ? null : rcl.text.trim().toUpperCase();
         Flow.form = {'name': name.text.trim(), 'work_role': work.text.trim(), 'category': category, 'works_with': worksWith.text.trim()};
@@ -503,7 +535,7 @@ class _NewRegState extends State<NewReg> with Act {
         Row(children: [
           Expanded(child: Field('Work role', Input(controller: work, hint: 'e.g. Welder'))),
           const SizedBox(width: 10),
-          Expanded(child: Field('RCL ID, if given', Input(controller: rcl, hint: 'optional', caps: TextCapitalization.characters))),
+          Expanded(child: Field('Employee code, if given', Input(controller: rcl, hint: 'optional', caps: TextCapitalization.characters))),
         ]),
         Field('Category', Wrap2([for (final c in _cats) Chip2(c.$2, tone: category == c.$1 ? Tone.on : Tone.plain, onTap: () => setState(() => category = c.$1))], gap: 6)),
         Row(children: [
@@ -518,7 +550,7 @@ class _NewRegState extends State<NewReg> with Act {
                 if (v != null) setState(() => section = v);
               })),
         ]),
-        Field('Contractor / subcontractor (if not on RCL\'s roll)', Input(controller: worksWith, hint: 'optional')),
+        Field('Contractor / subcontractor (if not on the company\'s roll)', Input(controller: worksWith, hint: 'optional')),
         InkWell(
           onTap: takePhoto,
           child: Row(children: [
@@ -617,14 +649,14 @@ class _GuestNewState extends State<GuestNew> with Act {
         if (name.text.trim().length < 2) throw DbError('Write your full name.');
         final phone = phoneE164(mobile.text);
         if (phone == null) throw DbError('Type your 10-digit WhatsApp mobile.');
-        try { await sb.auth.signInWithOtp(phone: phone); } on AuthException catch (e) { throw DbError(e.statusCode == '429' ? _whatsappCode : 'The code could not be sent – check the number.'); }
+        try { await sb.auth.signInWithOtp(phone: phone); } on AuthException catch (e) { throw DbError(_codeError(e, 'The code could not be sent – check the number.')); }
         Flow.mode = 'guest'; Flow.phone = phone;
         Flow.form = {'name': name.text.trim(), 'organisation': org.text.trim(), 'designation': work.text.trim()};
         if (mounted) context.push('/start/code');
       });
   @override
   Widget build(BuildContext context) => Screen(
-        top: const Top(title: 'Guest or visitor', sub: 'Once – after this the app knows you', back: '/start'),
+        top: Top(title: 'Guest or visitor', sub: '${Door.saved != null ? '${Door.saved!.companyName} · ' : ''}once – after this the app knows you', back: '/start/employee'),
         foot: _foot([Btn('Send code on WhatsApp', icon: 'message-circle', kind: BtnKind.whatsapp, busy: busy, onTap: send)]),
         children: [
           Field('Full name', Input(controller: name, hint: 'Your name', caps: TextCapitalization.words)),
@@ -640,7 +672,7 @@ class _GuestNewState extends State<GuestNew> with Act {
       );
 }
 
-// ── coming back (or the first time, for an RCL employee who is in HR): the mobile and a code ──
+// ── coming back (or the first time, for an employee who is in his company's HR): the mobile and a code ──
 class Back extends StatefulWidget {
   const Back({super.key});
   @override
@@ -654,7 +686,7 @@ class _BackState extends State<Back> with Act {
   Future<void> send() => act(() async {
         final phone = phoneE164(mobile.text);
         if (phone == null) throw DbError('Type your 10-digit WhatsApp mobile.');
-        try { await sb.auth.signInWithOtp(phone: phone, shouldCreateUser: true); } on AuthException catch (e) { throw DbError(e.statusCode == '429' ? _whatsappCode : 'The code could not be sent – try again.'); }
+        try { await sb.auth.signInWithOtp(phone: phone, shouldCreateUser: true); } on AuthException catch (e) { throw DbError(_codeError(e)); }
         Flow.mode = 'back'; Flow.phone = phone;
         if (mounted) context.push('/start/code');
       });
@@ -666,7 +698,7 @@ class _BackState extends State<Back> with Act {
           Input(controller: mobile, big: true, icon: 'phone', hint: '10 digits', keyboard: TextInputType.phone, maxLength: 14, autofocus: true),
           ErrorLine(error),
           Btn('Send code on WhatsApp', icon: 'message-circle', kind: BtnKind.whatsapp, busy: busy, onTap: send),
-          const InfoLine('Working for RCL? Your mobile in HR is enough – the code comes on WhatsApp.'),
+          const InfoLine('In your company\'s HR? Your mobile there is enough – the code comes on WhatsApp.'),
         ],
       );
 }
@@ -696,11 +728,54 @@ class _CodeAgainState extends State<CodeAgain> with Act {
           final phone = ph != null && ph.isNotEmpty ? '+${ph.replaceFirst('+', '')}' : s.me?['mobile'] as String?;
           if (phone == null) throw DbError('No mobile on this sign-in.');
           await s.signOut();
-          try { await sb.auth.signInWithOtp(phone: phone, shouldCreateUser: false); } catch (_) { throw DbError(_whatsappCode); }
+          try { await sb.auth.signInWithOtp(phone: phone, shouldCreateUser: false); } catch (e) { throw DbError(_codeError(e, _whatsappCode)); }
           Flow.mode = 'back'; Flow.phone = phone;
           if (context.mounted) context.go('/start/code');
         })),
         Btn('Not me', kind: BtnKind.ghost, onTap: () => s.signOut()),
+      ],
+    );
+  }
+}
+
+// ── a mess contractor's own code: the mobile the company's Admin gave (owner or operator), then the WhatsApp code ──
+class Contractor extends StatefulWidget {
+  const Contractor({super.key});
+  @override
+  State<Contractor> createState() => _ContractorState();
+}
+
+class _ContractorState extends State<Contractor> with Act {
+  final mobile = TextEditingController();
+  @override
+  void dispose() { mobile.dispose(); super.dispose(); }
+  Future<void> send(Door door) => act(() async {
+        if (phoneE164(mobile.text) == null) throw DbError('Type your 10-digit WhatsApp mobile.');
+        final r = await api('/api/start', {'door': door.code, 'mobile': mobile.text}, withToken: false);
+        final sent = await api('/api/start', {'token': r['token'], 'send': true}, withToken: false);
+        Flow.clear();
+        Flow.mode = 'contractor'; Flow.token = r['token'] as String?; Flow.hr = {'name': r['name']}; Flow.sentTo = sent['sent_to'] as String?;
+        if (mounted) context.push('/start/code');
+      });
+  @override
+  Widget build(BuildContext context) {
+    final door = Door.saved;
+    if (door == null || !door.isContractor) return const Gone();
+    return Screen(
+      top: Top(title: door.name, sub: 'Mess contractor · ${door.companyName}', back: '/start'),
+      children: [
+        FCard(child: Row(children: [
+          const Tile('chef-hat', tone: Tone.cream, size: 56), const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(door.name, style: T.b.copyWith(fontSize: 18)), Text('Code ${door.code} · for the owner and his operators', style: T.sm),
+          ])),
+        ])),
+        Text('Your WhatsApp mobile', style: T.h1.copyWith(fontSize: 26)),
+        Text('The mobile the company\'s Admin gave for you.', style: T.sm),
+        Input(controller: mobile, big: true, icon: 'phone', hint: '10 digits', keyboard: TextInputType.phone, maxLength: 14, autofocus: true),
+        ErrorLine(error),
+        Btn('Send code on WhatsApp', icon: 'message-circle', kind: BtnKind.whatsapp, busy: busy, onTap: () => send(door)),
+        InfoLine('A mobile not given for ${door.name} gets no code – the Admin adds it in People and roles.'),
       ],
     );
   }
