@@ -1,7 +1,8 @@
 # FALCON's Android app file (APK), built on every push: the app is checked (analyze, tests) and built. On a push to main the APK
 # is also put up as a GitHub Release ("Latest") – the file to download and install.
 # The settings come from GitHub → Settings → Secrets and variables → Actions:
-#   Variables: FALCON_SUPABASE_URL, FALCON_SUPABASE_KEY (the PUBLISHABLE key – public by design), FALCON_SERVER, FALCON_COMPANY
+#   Variables (or Secrets): FALCON_SUPABASE_URL, FALCON_SUPABASE_KEY (the PUBLISHABLE key – public by design; a SECRET key stops the
+#   build), FALCON_SERVER, FALCON_COMPANY
 #   Secrets (optional – Sketchline's own signing key): FALCON_KEYSTORE_B64, FALCON_KEYSTORE_PASSWORD, FALCON_KEY_ALIAS, FALCON_KEY_PASSWORD
 # Without the variables the app opens its "not connected" page; without the key it is signed with the debug key (said in the run).
 name: build
@@ -47,16 +48,28 @@ jobs:
           FALCON_KEYSTORE_PASSWORD: ${{ secrets.FALCON_KEYSTORE_PASSWORD }}
           FALCON_KEY_ALIAS: ${{ secrets.FALCON_KEY_ALIAS }}
           FALCON_KEY_PASSWORD: ${{ secrets.FALCON_KEY_PASSWORD }}
+          # (23-11-2026) taken from Variables, or from Secrets when they were put there
+          SB_URL: ${{ vars.FALCON_SUPABASE_URL || secrets.FALCON_SUPABASE_URL }}
+          SB_KEY: ${{ vars.FALCON_SUPABASE_KEY || secrets.FALCON_SUPABASE_KEY }}
+          SERVER: ${{ vars.FALCON_SERVER || secrets.FALCON_SERVER || 'https://wolf-rcl-erp.vercel.app' }}
+          COMPANY: ${{ vars.FALCON_COMPANY || 'RCL' }}
         run: |
-          if [ -z "${{ vars.FALCON_SUPABASE_URL }}" ] || [ -z "${{ vars.FALCON_SUPABASE_KEY }}" ]; then
+          if [ -z "$SB_URL" ] || [ -z "$SB_KEY" ]; then
             echo "::warning::FALCON_SUPABASE_URL / FALCON_SUPABASE_KEY are not set (Settings → Variables) – this app opens its 'not connected' page."
+          fi
+          # a SECRET key must never be built into an app (anyone can read an APK): the build stops before anything is made
+          ROLE=$(printf '%s' "$SB_KEY" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | grep -o '"role":"[a-z_]*"' || true)
+          case "$SB_KEY" in sb_secret_*) ROLE='"role":"service_role"';; esac
+          if printf '%s' "$ROLE" | grep -q service_role; then
+            echo "::error::FALCON_SUPABASE_KEY is Supabase's SECRET key – it must never be in an app. Put the PUBLISHABLE key there (Supabase → Project Settings → API Keys) and remove the secret one from GitHub."
+            exit 1
           fi
           V=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
           flutter build apk --release --build-number=${{ github.run_number }} \
-            --dart-define=FALCON_SUPABASE_URL=${{ vars.FALCON_SUPABASE_URL }} \
-            --dart-define=FALCON_SUPABASE_KEY=${{ vars.FALCON_SUPABASE_KEY }} \
-            --dart-define=FALCON_SERVER=${{ vars.FALCON_SERVER || 'https://wolf-rcl-erp.vercel.app' }} \
-            --dart-define=FALCON_COMPANY=${{ vars.FALCON_COMPANY || 'RCL' }} \
+            --dart-define=FALCON_SUPABASE_URL="$SB_URL" \
+            --dart-define=FALCON_SUPABASE_KEY="$SB_KEY" \
+            --dart-define=FALCON_SERVER="$SERVER" \
+            --dart-define=FALCON_COMPANY="$COMPANY" \
             --dart-define=FALCON_VERSION=$V
           mkdir -p out && cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-${{ github.run_number }}.apk"
           echo "APK=out/FALCON-$V-${{ github.run_number }}.apk" >> "$GITHUB_ENV"
