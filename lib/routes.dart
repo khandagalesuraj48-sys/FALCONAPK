@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 
 import 'core/prefs.dart';
 import 'core/session.dart';
+import 'screens/driver.dart' as drv;
 import 'screens/employee.dart' as emp;
 import 'screens/guest.dart' as guest;
+import 'screens/owner.dart' as own_;
 import 'screens/start.dart' as start;
 import 'ui/kit.dart';
 
@@ -135,24 +137,29 @@ List<RouteBase> appRoutes() => [
       _n('/guest', ['guest'], (_) => const guest.GuestHome()),
       _n('/guest/welcome', ['guest'], (_) => const guest.GuestWelcome()),
       _n('/guest/history', ['guest'], (_) => const guest.GuestHistory()),
-      _n('/owner', own, (_) => const _Soon('My mess')),
-      _n('/driver', ['driver'], (_) => const _Soon('My deliveries')),
+      // the mess owner / operator (o01–o16)
+      _n('/owner', own, (_) => const own_.OwnerHome()),
+      _n('/owner/requests', own, (_) => const own_.Requests()),
+      _n('/owner/requests/:id', own, (s) => own_.RequestDetail(id: s.pathParameters['id']!)),
+      _n('/owner/kitchen', own, (s) => own_.Kitchen(tab: s.uri.queryParameters['tab'])),
+      _n('/owner/parcels', own, (_) => const own_.Parcels()),
+      _n('/owner/batches/:id/driver', own, (s) => own_.BatchDriver(id: s.pathParameters['id']!)),
+      _n('/owner/batches/:id/route', own, (s) => own_.BatchRoute(id: s.pathParameters['id']!)),
+      _n('/owner/batches/:id/dispatch', own, (s) => own_.BatchDispatch(id: s.pathParameters['id']!)),
+      _n('/owner/live', own, (_) => const own_.Live()),
+      _n('/owner/menu', own, (_) => const own_.MenuPublish()),
+      _n('/owner/guests', own, (_) => const own_.GuestMeals()),
+      _n('/owner/closing', own, (_) => const own_.Closing()),
+      _n('/owner/complaints', ['mess_owner'], (_) => const own_.OwnerComplaints()),
+      _n('/owner/billing', ['mess_owner'], (_) => const own_.OwnerBilling()),
+      _n('/owner/follow-up', ['mess_owner'], (_) => const own_.FollowUp()),
+      // the driver (d01–d11)
+      _n('/driver', ['driver'], (_) => const drv.DriverHome()),
+      _n('/driver/assignments/:id', ['driver'], (s) => drv.Assign(id: s.pathParameters['id']!)),
+      _n('/driver/vehicle', ['driver'], (_) => const drv.Vehicle()),
+      _n('/driver/trip', ['driver'], (_) => const drv.TripStops()),
+      _n('/driver/route/:section', ['driver'], (s) => drv.RouteNext(section: s.pathParameters['section']!)),
+      _n('/driver/stops/:section', ['driver'], (s) => drv.StopPeople(section: s.pathParameters['section']!)),
+      _n('/driver/hand/:order/:person', ['driver'], (s) => drv.HandOver(order: s.pathParameters['order']!, person: s.pathParameters['person']!)),
+      _n('/driver/summary/:id', ['driver'], (s) => drv.TripSummary(id: s.pathParameters['id']!)),
     ];
-
-class _Soon extends StatelessWidget {
-  const _Soon(this.what);
-  final String what;
-  @override
-  Widget build(BuildContext context) {
-    final s = SessionScope.of(context);
-    return Screen(top: Top(title: what), children: [
-      Empty(
-        icon: 'clock',
-        title: 'Coming in the next build',
-        text: 'You are signed in${s.name.isEmpty ? '' : ' as ${s.name}'}. This part of FALCON is being moved into the app – '
-            'until then it is on the web.',
-        action: Btn('Sign out', icon: 'log-out', kind: BtnKind.ghost, onTap: () => s.signOut()),
-      ),
-    ]);
-  }
-}
