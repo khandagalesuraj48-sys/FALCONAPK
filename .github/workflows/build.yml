@@ -95,8 +95,14 @@ jobs:
           body: |
             TEST build of FALCON – Food & Site Operations (Sketchline Industries), from the branch falcon-app (${{ github.sha }}).
             Download the .apk below on the phone and install it. Not the final app: parts still come in the next builds.
-      - name: Release (main only)
+      # (23-11-2026, his answers: main is made; the signing key is FALCON's own, kept like the ERP's) a release of main only with the
+      # app's permanent key – never with the debug key (a phone could never take its update)
+      - name: Permanent key?
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if [ -z "$FALCON_KEYSTORE_PATH" ]; then echo "::warning::No permanent signing key yet – main is built, nothing is released."; echo "RELEASE=no" >> "$GITHUB_ENV"; else echo "RELEASE=yes" >> "$GITHUB_ENV"; fi
+      - name: Release (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.RELEASE == 'yes'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VER }}-${{ github.run_number }}
