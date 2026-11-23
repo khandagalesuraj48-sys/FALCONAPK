@@ -73,25 +73,15 @@ Future<List<Rec>> items() => rows(sb.from('items').select('id,code,name,kind,mea
 
 Future<List<Rec>> sections(String? siteId) async {
   if (siteId == null) return [];
-  return (await rows(sb.from('sections').select('id,code,name,km,place,circle_id,lat,lng,active,valid_from,valid_to,circles(code,km_from,km_to)').eq('site_id', siteId).eq('active', true).order('km')))
+  // (Wolf 0017) only sections – no circle; each with its area (place + metres)
+  return (await rows(sb.from('sections').select('id,code,name,km,place,lat,lng,radius_m,active,valid_from,valid_to').eq('site_id', siteId).eq('active', true).order('km').order('code')))
       .where((r) => inUse(r))
       .toList();
 }
 
 double? kmOf(Object? v) => v == null ? null : toD(v);
 
-({List<MapSection> sections, List<MapCircle> circles}) toMap(List<Rec> secs) {
-  final circles = <String, MapCircle>{};
-  for (final s in secs) {
-    final c = s['circles'];
-    if (c is Map) circles['${c['code']}'] = MapCircle('${c['code']}', kmOf(c['km_from']), kmOf(c['km_to']));
-  }
-  final cs = circles.values.toList()..sort((a, b) => a.code.compareTo(b.code));
-  return (
-    sections: [for (final s in secs) MapSection('${s['id']}', '${s['code']}', kmOf(s['km']), circle: (s['circles'] as Map?)?['code'] as String?)],
-    circles: cs,
-  );
-}
+({List<MapSection> sections,}) toMap(List<Rec> secs) => (sections: [for (final s in secs) MapSection('${s['id']}', '${s['code']}', kmOf(s['km']))],);
 
 const stateWords = {
   'requested': 'asked', 'accepted': 'accepted', 'preparing': 'being made', 'ready': 'ready', 'dispatched': 'on the way',

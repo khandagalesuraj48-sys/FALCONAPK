@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/db.dart';
 import '../core/fmt.dart';
+import '../core/geo.dart';
 import '../core/session.dart';
 import '../ui/kit.dart';
 import '../ui/look.dart';
@@ -20,6 +21,9 @@ PillTabs _tabs(String current) => PillTabs(tabs: driverTabs, current: current, d
 
 List<Rec> _list(Object? v) => [for (final x in (v as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
 List<Rec> stopsOf(Rec? t) => _list(t?['stops']);
+// (Wolf 0017) a stop is a section – or one order's location outside the sections ("point": no section_id, its order_id)
+String stopKey(Rec x) => '${x['section_id'] ?? 'p-${x['order_id']}'}';
+String stopName(Rec x) => x['point'] == true ? 'Location · ${(_list(x['people']).firstOrNull?['name']) ?? x['section']}' : '${x['section']}';
 List<Rec> peopleOf(Rec stop) => _list(stop['people']);
 List<Rec> linesOf(Rec p) => _list(p['lines']);
 
@@ -267,19 +271,19 @@ class TripStops extends StatelessWidget {
             for (final x in stops)
               Builder(builder: (_) {
                 final pp = peopleOf(x), d = pp.where((p) => pState(p) != 'open').length, isNext = identical(x, next);
-                return FCard(dark: true, padding: const EdgeInsets.all(12), border: isNext ? C.gold : null, onTap: () => context.push('/driver/stops/${x['section_id']}'), child: Row(children: [
+                return FCard(dark: true, padding: const EdgeInsets.all(12), border: isNext ? C.gold : null, onTap: () => context.push('/driver/stops/${stopKey(x)}'), child: Row(children: [
                   Container(width: 34, height: 34, alignment: Alignment.center, decoration: BoxDecoration(shape: BoxShape.circle, color: d == pp.length ? C.leaf : C.navy3),
                       child: d == pp.length ? const Ico('check', size: 16, color: Colors.white) : Text('${x['seq']}', style: _w(T.b.copyWith(fontSize: 13)))),
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('${x['section']}${x['km'] != null ? ' · Km ${x['km']}' : ''}', style: _w(T.b)),
+                    Text('${stopName(x)}${x['km'] != null ? ' · Km ${x['km']}' : ''}', style: _w(T.b)),
                     Text('$d of ${pp.length}${x['reached_at'] != null ? ' · arrived ${time(x['reached_at'] as String?)}' : x['eta'] != null ? ' · about ${time(x['eta'] as String?)}' : ''}${x['place'] != null ? ' · ${x['place']}' : ''}', style: _sub(T.xs)),
                   ])),
                   if (isNext) _gold('Next'),
                 ]));
               }),
             const InfoLine('What is in each box is set by the mess – it cannot be changed here.', dark: true),
-            if (st == 'on_the_way' && next != null) Btn('Go to ${next['section']}', icon: 'navigation', kind: BtnKind.gold, onTap: () => context.push('/driver/route/${next['section_id']}')),
+            if (st == 'on_the_way' && next != null) Btn('Go to ${stopName(next)}', icon: 'navigation', kind: BtnKind.gold, onTap: () => context.push('/driver/route/${stopKey(next)}')),
             if (st == 'on_the_way' && allDone) Btn('Trip summary', kind: BtnKind.gold, onTap: () => context.push('/driver/summary/${tr['id']}')),
           ],
         ));
@@ -306,10 +310,10 @@ class _RouteNextState extends State<RouteNext> with Act {
       load: () => now(s),
       builder: (context, x, reload) {
         final (_, tr) = x;
-        final stops = stopsOf(tr), stop = stops.where((y) => y['section_id'] == widget.section).firstOrNull;
+        final stops = stopsOf(tr), stop = stops.where((y) => stopKey(y) == widget.section).firstOrNull;
         if (tr == null || stop == null) return const Screen(dark: true, top: Top(dark: true, title: 'Route', back: '/driver/trip'), children: [Empty(dark: true, icon: 'route', title: 'Not a stop of your trip')]);
         final gmaps = stop['lat'] != null && stop['lng'] != null
-            ? 'https://www.google.com/maps/dir/?api=1&destination=${stop['lat']},${stop['lng']}'
+            ? directionsUrl(toD(stop['lat']), toD(stop['lng'])).toString()
             : 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent('${stop['place'] ?? stop['section']} ${stop['km'] != null ? 'Km ${stop['km']}' : ''}')}';
         return ShareLocation(trip: tr, child: Screen(
           dark: true,
@@ -317,16 +321,16 @@ class _RouteNextState extends State<RouteNext> with Act {
           children: [
             // (23-11-2026, picture N4) the Google map: the trip's stops with a place, the van (this phone), the line through the stops left
             ClipRRect(borderRadius: BorderRadius.circular(20), child: GMap(dark: true, height: 320, me: 'van', label: 'Map: your van and the trip\'s stops',
-                marks: [for (final y in stops) if (y['lat'] != null && y['lng'] != null) Mark(toD(y['lat']), toD(y['lng']), y['section_id'] == widget.section ? 'mine' : y['reached_at'] != null ? 'done' : 'stop', label: '${y['seq']}', title: '${y['section']}')],
+                marks: [for (final y in stops) if (y['lat'] != null && y['lng'] != null) Mark(toD(y['lat']), toD(y['lng']), stopKey(y) == widget.section ? 'mine' : y['reached_at'] != null ? 'done' : 'stop', label: '${y['seq']}', title: '${y['section']}')],
                 line: [for (final y in stops) if (y['reached_at'] == null && y['lat'] != null && y['lng'] != null) (toD(y['lat']), toD(y['lng']))],
-                fallback: RoadMap(dark: true, sections: [for (final y in stops) MapSection('${y['section_id']}', '${y['section']}', y['km'] == null ? null : toD(y['km']))],
-                    mine: widget.section, done: [for (final y in stops) if (y['reached_at'] != null) '${y['section_id']}'], height: 320, label: 'The trip\'s stops on the road'))),
+                fallback: RoadMap(dark: true, sections: [for (final y in stops) if (y['point'] != true) MapSection(stopKey(y), '${y['section']}', y['km'] == null ? null : toD(y['km']))],
+                    mine: widget.section, done: [for (final y in stops) if (y['reached_at'] != null) stopKey(y)], height: 320, label: 'The trip\'s stops on the road'))),
             FCard(dark: true, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
                 Container(width: 40, height: 40, alignment: Alignment.center, decoration: const BoxDecoration(color: C.gold, shape: BoxShape.circle), child: Text('${stop['seq']}', style: T.b.copyWith(color: const Color(0xFF1D1404)))),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Next stop', style: _sub(T.xs)),
-                  Text('${stop['section']}${stop['km'] != null ? ' · Km ${stop['km']}' : ''}${stop['place'] != null ? ' · ${stop['place']}' : ''}', style: _w(T.b.copyWith(fontSize: 17)))])),
+                  Text('${stopName(stop)}${stop['km'] != null ? ' · Km ${stop['km']}' : ''}${stop['place'] != null ? ' · ${stop['place']}' : ''}', style: _w(T.b.copyWith(fontSize: 17)))])),
                 Text(stop['eta'] != null ? time(stop['eta'] as String?) : '', style: _w(T.b)),
               ]),
               const SizedBox(height: 8),
@@ -337,8 +341,8 @@ class _RouteNextState extends State<RouteNext> with Act {
                 Expanded(child: Btn('Open in Google Maps', icon: 'navigation', kind: BtnKind.ghost, dark: true, onTap: () => launchUrl(Uri.parse(gmaps), mode: LaunchMode.externalApplication))),
                 const SizedBox(width: 10),
                 Expanded(child: Btn('I\'m here', kind: BtnKind.gold, busy: busy, onTap: () => act(() async {
-                  await call('reach_stop', {'p_batch': tr['id'], 'p_section': stop['section_id']});
-                  if (context.mounted) context.go('/driver/stops/${stop['section_id']}');
+                  await call('reach_stop', stop['point'] == true ? {'p_batch': tr['id'], 'p_order': stop['order_id']} : {'p_batch': tr['id'], 'p_section': stop['section_id']});
+                  if (context.mounted) context.go('/driver/stops/${stopKey(stop)}');
                 }))),
               ]),
             ])),
@@ -362,13 +366,15 @@ class StopPeople extends StatelessWidget {
       load: () => now(s),
       builder: (context, x, reload) {
         final (_, tr) = x;
-        final stop = stopsOf(tr).where((y) => y['section_id'] == section).firstOrNull;
+        final stop = stopsOf(tr).where((y) => stopKey(y) == section).firstOrNull;
         if (stop == null) return const Screen(dark: true, top: Top(dark: true, title: 'Stop', back: '/driver/trip'), children: [Empty(dark: true, icon: 'map-pin', title: 'Not a stop of your trip')]);
         final pp = peopleOf(stop), open = pp.where((p) => pState(p) == 'open').toList(), done = pp.where((p) => pState(p) != 'open').toList();
         return ShareLocation(trip: tr, child: Screen(
           dark: true,
-          top: Top(dark: true, title: '${stop['section']}${stop['km'] != null ? ' · Km ${stop['km']}' : ''}', sub: 'Stop ${stop['seq']} · ${pp.length} parcels${stop['place'] != null ? ' · ${stop['place']}' : ''}', back: '/driver/trip'),
+          top: Top(dark: true, title: '${stopName(stop)}${stop['km'] != null ? ' · Km ${stop['km']}' : ''}', sub: 'Stop ${stop['seq']} · ${pp.length} parcels${stop['place'] != null ? ' · ${stop['place']}' : ''}', back: '/driver/trip'),
           children: [
+            if (stop['lat'] != null && stop['lng'] != null)
+              Btn('Directions in Google Maps', icon: 'navigation', kind: BtnKind.ghost, dark: true, onTap: () => launchUrl(directionsUrl(toD(stop['lat']), toD(stop['lng'])), mode: LaunchMode.externalApplication)),
             Row(children: [Expanded(child: Text('To give · ${open.length}', style: _sub(T.xs))), Text('Given · ${done.length}', style: _sub(T.xs))]),
             for (final p in open)
               FCard(dark: true, padding: const EdgeInsets.all(12), onTap: () => context.push('/driver/hand/${p['order_id']}/${p['person_id']}'), child: Row(children: [
@@ -437,7 +443,7 @@ class _HandOverState extends State<HandOver> with Act {
         }
         return ShareLocation(trip: tr, child: Screen(
           dark: true,
-          top: Top(dark: true, title: '${pp['name']}', sub: '${pp['code']} · ${what(pp)}', back: '/driver/stops/${st['section_id']}'),
+          top: Top(dark: true, title: '${pp['name']}', sub: '${pp['code']} · ${what(pp)}', back: '/driver/stops/${stopKey(st)}'),
           children: [
             if (mode == 'code') ...[
               FCard(dark: true, child: Column(children: [Text('Ask for his code', style: _w(T.b.copyWith(fontSize: 17))), Text('It is on his phone, in FALCON', style: _sub(T.sm))])),
@@ -478,7 +484,7 @@ class _HandOverState extends State<HandOver> with Act {
               ErrorLine(error, dark: true),
               Btn('Mark not delivered', kind: BtnKind.red, busy: busy, onTap: () => act(() async {
                 await call('fail_delivery', {'p_batch': tr['id'], 'p_order': widget.order, 'p_person': widget.person, 'p_reason': '$why${note.text.trim().isNotEmpty ? ' – ${note.text.trim()}' : ''}'});
-                if (context.mounted) context.go('/driver/stops/${st['section_id']}');
+                if (context.mounted) context.go('/driver/stops/${stopKey(st)}');
               })),
               Btn('Back', kind: BtnKind.ghost, dark: true, onTap: () => setState(() => mode = 'code')),
             ],
@@ -519,7 +525,7 @@ class _TripSummaryState extends State<TripSummary> with Act {
                   Builder(builder: (_) {
                     final pp = peopleOf(x), f = pp.where((p) => pState(p) == 'failed').toList();
                     return Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [
-                      Expanded(child: Text('${x['section']} · ${pp.where((p) => pState(p) == 'done').length} of ${pp.length}${f.isNotEmpty ? ' · ${f.map((p) => firstName(p['name'] as String?)).join(', ')} not delivered' : ''}', style: _w(T.sm))),
+                      Expanded(child: Text('${stopName(x)} · ${pp.where((p) => pState(p) == 'done').length} of ${pp.length}${f.isNotEmpty ? ' · ${f.map((p) => firstName(p['name'] as String?)).join(', ')} not delivered' : ''}', style: _w(T.sm))),
                       Text(time(x['reached_at'] as String?), style: _sub(T.xs))]));
                   }),
               ])),

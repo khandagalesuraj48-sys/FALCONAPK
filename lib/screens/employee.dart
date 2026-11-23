@@ -449,7 +449,10 @@ class _MealAtMessState extends State<MealAtMess> with Act {
   }
 }
 
-// ── e04 · Parcel ──
+// ── e04 · Parcel ── (Wolf 0017, his word of 23-11-2026: "only section … section che baheun koni kel asel tr … location direction he
+// sagle hot jail") the van goes where he is: a section chosen by hand first; else the phone's location – the section whose area holds
+// it, or, outside every section, the location itself (the kitchen and the driver get it with the directions); no location: his work
+// place, or he chooses. The same as the web's Parcel.
 class Parcel extends StatefulWidget {
   const Parcel({super.key});
   @override
@@ -462,7 +465,24 @@ class _ParcelState extends State<Parcel> with Act {
   String how = 'delivery';
   final note = TextEditingController();
   @override
-  void dispose() { note.dispose(); super.dispose(); }
+  void initState() {
+    super.initState();
+    Here.i.addListener(_moved);
+    Here.i.use();
+  }
+
+  void _moved() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    Here.i.removeListener(_moved);
+    Here.i.done();
+    note.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = SessionScope.of(context);
@@ -478,39 +498,53 @@ class _ParcelState extends State<Parcel> with Act {
       builder: (context, x, reload) {
         final (d, its, secs, visit) = x;
         final m = meal ?? currentMeal(d.wins), w = d.win(m), st = winState(w, today(), 'parcel');
-        final secId = pickedSection ?? visit?['section_id'] as String? ?? s.me?['home_section_id'] as String?;
-        final sec = secs.where((r) => r['id'] == secId).firstOrNull;
+        final h = Here.i;
+        final byHand = secs.where((r) => r['id'] == pickedSection).firstOrNull;
+        final usualId = visit?['section_id'] as String? ?? s.me?['home_section_id'] as String?;
+        final usual = secs.where((r) => r['id'] == usualId).firstOrNull;
+        final found = h.state == 'ok' ? sectionAt(h.lat, h.lng, secs) : null;
+        // where the van goes: (section, a point outside the sections, why, still finding)
+        final (Rec? sec, bool point, String why, bool asking) = byHand != null ? (byHand, false, 'chosen by you', false)
+            : h.state == 'ok' ? (found != null ? (found, false, 'found by your location', false) : (null, true, 'outside the sections', false))
+            : h.state == 'asking' ? (null, false, '', true)
+            : usual != null ? (usual, false, 'your work place', false) : (null, false, '', false);
+        final away = point && d.mess?.lat != null && d.mess?.lng != null ? metres(h.lat, h.lng, d.mess!.lat!, d.mess!.lng!) : null;
         final mealItem = its.where((i) => i['kind'] == 'meal' && i['meal'] == m).firstOrNull;
         final extras = its.where((i) => i['kind'] == 'extra').toList();
         final n = extra.values.fold<int>(0, (a, b) => a + b);
         Future<void> ask() => act(() async {
-              if (how == 'delivery' && sec == null) throw DbError('Choose where to deliver.');
+              if (how == 'delivery' && sec == null && !point) throw DbError('Choose where to deliver.');
               final lines = [{'item': mealItem!['code']}, for (final e in extra.entries) if (e.value > 0) {'item': e.key, 'qty': e.value}];
+              // the location decides on the server (the same rule): his point is sent; a section by hand / his work place: the section
+              final byPoint = how == 'delivery' && byHand == null && h.state == 'ok';
               final r = await call<dynamic>('request_order', {'p_mess': d.mess!.id, 'p_date': today(), 'p_meal': m, 'p_kind': how, 'p_lines': lines,
-                'p_section': how == 'delivery' ? sec!['id'] : null, 'p_note': note.text.trim().isEmpty ? null : note.text.trim(), 'p_visit': visit?['id']});
+                'p_section': how == 'delivery' && !byPoint ? sec!['id'] : null, 'p_note': note.text.trim().isEmpty ? null : note.text.trim(), 'p_visit': visit?['id'],
+                'p_lat': byPoint ? double.parse(h.lat.toStringAsFixed(6)) : null, 'p_lng': byPoint ? double.parse(h.lng.toStringAsFixed(6)) : null});
               final id = r['order_id'] ?? (r['existing'] as List).first['order_id'];
               if (context.mounted) context.go('/app/orders/$id');
             });
-        final circle = (sec?['circles'] as Map?)?['code'];
+        final name = sec != null && sec['name'] != null && sec['name'] != sec['code'] ? ' – ${sec['name']}' : '';
         return Screen(
           top: Top(title: '${mealName(m)} parcel', sub: w != null ? 'Order by ${w.orderBy}' : 'No parcels for this meal', back: ''),
           foot: foot([
             _row([Expanded(child: Text('1 ${(mealItem?['name'] as String? ?? 'meal').toLowerCase()}${n > 0 ? ' · $n extra' : ''}', style: T.sm)), Text('Change or cancel for ${w?.changeMinutes ?? 0} min', style: T.xs)]),
-            Btn('Ask for the parcel', icon: 'package-check', kind: BtnKind.sf, busy: busy, onTap: !st.open || mealItem == null || d.mess == null ? null : ask),
+            Btn('Ask for the parcel', icon: 'package-check', kind: BtnKind.sf, busy: busy, onTap: !st.open || mealItem == null || d.mess == null || (how == 'delivery' && asking) ? null : ask),
           ]),
           children: [
             Seg(items: const [('meal', 'At the mess'), ('parcel', 'Parcel to my site')], value: 'parcel', onChanged: (v) { if (v == 'meal') context.go('/app/meal'); }),
             Wrap2([for (final xm in meals) Chip2(mealName(xm), tone: xm == m ? Tone.on : Tone.plain, onTap: () => setState(() => meal = xm))], gap: 6),
             if (how == 'delivery')
-              FCard(onTap: () async { await context.push('/app/section'); if (mounted) setState(() {}); }, child: _row([
-                const Tile('map-pin', tone: Tone.navy),
+              FCard(key: const Key('deliver-to'), onTap: () async { await context.push('/app/section'); if (mounted) setState(() {}); }, child: _row([
+                Tile(point ? 'locate-fixed' : 'map-pin', tone: point ? Tone.blue : Tone.navy),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Deliver to${secId == s.me?['home_section_id'] ? ' · your work place' : ''}', style: T.xs),
-                  Text(sec != null ? 'Circle ${circle ?? ''} · Section ${sec['code']}' : 'Choose the section', style: T.b),
-                  Text(sec != null ? '${sec['km'] != null ? 'Km ${sec['km']}' : ''}${sec['place'] != null ? ' · ${sec['place']}' : ''}' : ' ', style: T.sm),
+                  Text('Deliver to${why.isNotEmpty ? ' · $why' : ''}', style: T.xs),
+                  Text(sec != null ? 'Section ${sec['code']}$name' : point ? 'Your location' : asking ? 'Finding where you are…' : 'Choose the section', style: T.b),
+                  Text(sec != null ? [if (sec['km'] != null) 'Km ${sec['km']}', if (sec['place'] != null) '${sec['place']}'].join(' · ')
+                      : point ? '${away != null ? '${distText(away)} from the mess · ' : ''}the van brings it here' : h.state == 'off' ? 'Location is off – choose the section' : ' ', style: T.sm),
                 ])),
                 Text('Change', style: T.sm.copyWith(color: C.leafD, fontWeight: FontWeight.w600)),
               ], gap: 12)),
+            if (how == 'delivery' && point) const InfoLine('You are outside every section. Your location goes with this order only – for the van\'s directions.'),
             FCard(child: _col([
               if (mealItem != null) _row([Tile(mealIcon[m]!, tone: Tone.sf, size: 40), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${mealItem['name']}', style: T.b), Text('Packed · one a person', style: T.xs)])), const Chip2('1', height: 28)], gap: 12),
               for (final e in extras)
@@ -531,7 +565,7 @@ class _ParcelState extends State<Parcel> with Act {
   }
 }
 
-// ── e05 · Circle / section ──
+// ── e05 · Section ── (Wolf 0017: only sections; "By my location" leaves the choice to the phone's location again)
 class SectionPick extends StatefulWidget {
   const SectionPick({super.key});
   @override
@@ -539,7 +573,6 @@ class SectionPick extends StatefulWidget {
 }
 
 class _SectionPickState extends State<SectionPick> {
-  String circle = '';
   String? sel;
   @override
   Widget build(BuildContext context) {
@@ -553,9 +586,7 @@ class _SectionPickState extends State<SectionPick> {
       },
       builder: (context, secs, reload) {
         final map = toMap(secs);
-        final list = secs.where((x) => circle.isEmpty || (x['circles'] as Map?)?['code'] == circle).toList();
         final chosen = secs.where((x) => x['id'] == sel).firstOrNull;
-        final groups = list.map((x) => '${(x['circles'] as Map?)?['code'] ?? ''}').toSet().toList();
         return Screen(
           top: Top(title: 'Where are you working?', sub: s.homeSite?.code, back: ''),
           foot: foot([Btn('Deliver to ${chosen != null ? '${chosen['code']}${chosen['km'] != null ? ' · Km ${chosen['km']}' : ''}' : '…'}', kind: BtnKind.leaf,
@@ -563,20 +594,17 @@ class _SectionPickState extends State<SectionPick> {
           children: [
             ClipRRect(borderRadius: BorderRadius.circular(20), child: GMap(height: 220, label: 'Map: the site\'s sections',
                 marks: [for (final x in secs) if (x['lat'] != null && x['lng'] != null) Mark(toD(x['lat']), toD(x['lng']), x['id'] == sel ? 'mine' : 'stop', label: '${x['code']}', title: '${x['name']}')],
-                fallback: RoadMap(sections: map.sections, circles: map.circles, mine: sel, height: 220, label: 'The road with its sections'))),
-            Wrap2([
-              Chip2('All', tone: circle.isEmpty ? Tone.on : Tone.plain, onTap: () => setState(() => circle = '')),
-              for (final c in map.circles) Chip2('Circle ${c.code}', tone: circle == c.code ? Tone.on : Tone.plain, onTap: () => setState(() => circle = c.code)),
-            ]),
-            if (list.isEmpty) const Empty(icon: 'map', title: 'No sections yet', text: 'The Site Admin adds the sections of the road.'),
-            for (final g in groups) ...[
-              Text('Circle $g', style: T.xs.copyWith(fontWeight: FontWeight.w600)),
-              for (final (i, x) in list.where((y) => '${(y['circles'] as Map?)?['code'] ?? ''}' == g).indexed)
-                FCard(padding: const EdgeInsets.all(12), border: x['id'] == sel ? C.leaf : null, onTap: () => setState(() => sel = x['id'] as String),
-                    child: _row([Av('${i + 1}', size: 34, tone: Tone.navy), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${x['code']}${x['km'] != null ? ' · Km ${x['km']}' : ''}', style: T.b), Text('${x['place'] ?? x['name']}', style: T.xs)])),
-                      Ico(x['id'] == sel ? 'circle-check' : 'circle-dot', size: 18, color: x['id'] == sel ? C.leaf : C.muted)], gap: 12)),
-            ],
+                fallback: RoadMap(sections: map.sections, mine: sel, height: 220, label: 'The road with its sections'))),
+            FCard(key: const Key('by-location'), padding: const EdgeInsets.all(12), onTap: () { pickedSection = null; context.pop(); },
+                child: _row([const Tile('locate-fixed', tone: Tone.blue, size: 40), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('By my location', style: T.b), Text('The section is found by itself – outside every section, the van comes to you', style: T.xs)])),
+                  const Ico('chevron-right', size: 18, color: C.muted)], gap: 12)),
+            if (secs.isEmpty) const Empty(icon: 'map', title: 'No sections yet', text: 'The Site Admin adds the sections.'),
+            for (final (i, x) in secs.indexed)
+              FCard(padding: const EdgeInsets.all(12), border: x['id'] == sel ? C.leaf : null, onTap: () => setState(() => sel = x['id'] as String),
+                  child: _row([Av('${i + 1}', size: 34, tone: Tone.navy), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${x['code']}${x['km'] != null ? ' · Km ${x['km']}' : ''}', style: T.b), Text('${x['place'] ?? x['name']}', style: T.xs)])),
+                    Ico(x['id'] == sel ? 'circle-check' : 'circle-dot', size: 18, color: x['id'] == sel ? C.leaf : C.muted)], gap: 12)),
             const InfoLine('A place other than your work place is shown to the Site Admin.'),
           ],
         );
@@ -826,7 +854,8 @@ class _OrderStatusState extends State<OrderStatus> with Act {
               Tile(o['kind'] == 'meal' ? 'utensils' : 'package', tone: Tone.sf),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(what.isNotEmpty ? what : '${r.lines.length} people', style: T.b),
-                Text(o['kind'] == 'delivery' && sec != null ? 'To ${sec['code']}${sec['km'] != null ? ' · Km ${sec['km']}' : ''}${sec['place'] != null ? ' · ${sec['place']}' : ''}' : '${r.mess?['name'] ?? ''}', style: T.sm),
+                Text(o['kind'] == 'delivery' && sec != null ? 'To ${sec['code']}${sec['km'] != null ? ' · Km ${sec['km']}' : ''}${sec['place'] != null ? ' · ${sec['place']}' : ''}'
+                    : o['kind'] == 'delivery' && o['to_lat'] != null ? 'To your location – outside the sections' : '${r.mess?['name'] ?? ''}', style: T.sm),
               ])),
               Chip2(stateWord(st), tone: _stateTone(st), height: 26),
             ], gap: 12)),
@@ -887,17 +916,23 @@ class Track extends StatelessWidget {
           children: [
             // (23-11-2026, picture N3) the Google map: the mess, the stops with a place, the van where its driver's phone last said
             Builder(builder: (_) {
-              Rec? sec(Object? code) => secs.where((y) => y['code'] == code && y['lat'] != null && y['lng'] != null).firstOrNull;
+              Rec? secOf(Object? code) => secs.where((y) => y['code'] == code && y['lat'] != null && y['lng'] != null).firstOrNull;
+              // (Wolf 0017) a stop that is a location: only his own is drawn (where he asked it to come); somebody else's never
+              (double, double)? at(Rec y) {
+                if (y['point'] == true) return y['mine'] == true && r?.o['to_lat'] != null ? (toD(r!.o['to_lat']), toD(r.o['to_lng'])) : null;
+                final q = secOf(y['section']);
+                return q == null ? null : (toD(q['lat']), toD(q['lng']));
+              }
               final last = v['state'] == 'on_the_way' && v['last'] is Map && (v['last'] as Map)['lat'] != null ? v['last'] as Map : null;
-              final stopMarks = [for (final y in stops) if (sec(y['section']) != null) Mark(toD(sec(y['section'])!['lat']), toD(sec(y['section'])!['lng']), y['mine'] == true ? 'mine' : y['reached_at'] != null ? 'done' : 'stop', label: '${y['section']}', title: 'Section ${y['section']}')];
+              final stopMarks = [for (final y in stops) if (at(y) != null) Mark(at(y)!.$1, at(y)!.$2, y['mine'] == true ? 'mine' : y['reached_at'] != null ? 'done' : 'stop', label: y['point'] == true ? 'You' : '${y['section']}', title: y['point'] == true ? 'Your location' : 'Section ${y['section']}')];
               final marks = stopMarks.isEmpty && last == null ? <Mark>[] : [
                 if (mess?.lat != null && mess?.lng != null) Mark(mess!.lat!, mess.lng!, 'mess', title: mess.name),
                 ...stopMarks,
                 if (last != null) Mark(toD(last['lat']), toD(last['lng']), 'van', title: '${v['vehicle'] ?? 'Van'}'),
               ];
               return ClipRRect(borderRadius: BorderRadius.circular(20), child: GMap(height: 300, label: 'Map: the van, the mess and the stops', marks: marks,
-                  line: last == null ? const [] : [(toD(last['lat']), toD(last['lng'])), for (final y in stops) if (y['reached_at'] == null && sec(y['section']) != null) (toD(sec(y['section'])!['lat']), toD(sec(y['section'])!['lng']))],
-                  fallback: RoadMap(sections: map.sections, circles: map.circles, mine: mineId, van: v['state'] == 'on_the_way' ? vanKm : null,
+                  line: last == null ? const [] : [(toD(last['lat']), toD(last['lng'])), for (final y in stops) if (y['reached_at'] == null && at(y) != null) at(y)!],
+                  fallback: RoadMap(sections: map.sections, mine: mineId, van: v['state'] == 'on_the_way' ? vanKm : null,
                       done: [for (final x in secs) if (stops.any((y) => y['section'] == x['code'] && y['reached_at'] != null)) '${x['id']}'], height: 300, label: 'The van on the road')));
             }),
             FCard(child: _col([

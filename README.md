@@ -43,3 +43,10 @@ timeout 300 flutter test
 * **Opened from HR:** the ERP / HR app opens `falcon://app/hr?p=<HR's pass>` (only this package); `/hr` (`lib/screens/from_hr.dart`)
   sends the pass to FALCON's `/api/hr` and he is in – no company code, no WhatsApp code; "‹ HR" goes back.
 
+
+## Only Sections (23-11-2026 – Wolf part 0017)
+His word: "ekach thew only section … section che baheun koni kel asel tr … location direction he sagle hot jail". No circle anywhere.
+A van order goes where the person is: the section whose metres hold his location (found by itself – `core/geo.dart` `sectionAt`, the
+server's own rule), or, outside every section, his location goes with that order only. The owner sees it with how far it is from the
+mess and Google's directions (Orders, Parcels for the van, the route); the driver gets it as a stop of its own, with the directions and
+"I'm here". Needs FALCON's SQL update `2026-11-23f_sections_only.sql` first.

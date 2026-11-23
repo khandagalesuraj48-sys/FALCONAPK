@@ -1,6 +1,8 @@
 // Where the person is (23-11-2026, his word: "app swata check krel user kuthe aahe – mess location madhe to asel tr mess ch auto
 // yeil, mess pasun lamb asel tr mess che direction kiti lamb te dakhwel ani auto parcel"; pictures N1, N2). The phone's own
-// location, read only while a screen that needs it is open; nothing of it is saved or sent – the same as the web's src/lib/geo.ts.
+// location, read only while a screen that needs it is open – the same as the web's src/lib/geo.ts. It leaves the phone only with a van
+// order (Wolf part 0017, his word: "only section … section che baheun koni kel asel tr … location direction he sagle hot jail"): the
+// server finds the section whose area holds it, and keeps the point with that order only when it is inside no section.
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -24,7 +26,24 @@ bool? atMess(double lat, double lng, double acc, double? mLat, double? mLng, int
   return metres(lat, lng, mLat, mLng) - math.min(acc, 50) <= (radius ?? 100);
 }
 
-/// Google Maps' own directions page – the Maps app on the phone; only the mess's point is in it.
+/// The section whose area (its point + metres) holds the point – the nearest when two do; null: inside no section. The server's own
+/// rule (public.section_at); a section without its place or its metres is never found by a point.
+Map<String, dynamic>? sectionAt(double lat, double lng, List<Map<String, dynamic>> secs) {
+  Map<String, dynamic>? best;
+  var bd = 1 << 30;
+  for (final x in secs) {
+    final sLat = x['lat'], sLng = x['lng'], r = x['radius_m'];
+    if (sLat == null || sLng == null || r == null) continue;
+    final d = metres(lat, lng, (sLat as num).toDouble(), (sLng as num).toDouble());
+    if (d <= (r as num) && (d < bd || (d == bd && best != null && '${x['code']}'.compareTo('${best['code']}') < 0))) {
+      best = x;
+      bd = d;
+    }
+  }
+  return best;
+}
+
+/// Google Maps' own directions page – the Maps app on the phone; only the point it goes to is in it.
 Uri directionsUrl(double lat, double lng) => Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}');
 
 /// The phone's place while a screen listens: 'asking' → 'ok' (lat, lng, acc) or 'off' (switched off / refused).
