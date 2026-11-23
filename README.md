@@ -50,3 +50,14 @@ A van order goes where the person is: the section whose metres hold his location
 server's own rule), or, outside every section, his location goes with that order only. The owner sees it with how far it is from the
 mess and Google's directions (Orders, Parcels for the van, the route); the driver gets it as a stop of its own, with the directions and
 "I'm here". Needs FALCON's SQL update `2026-11-23f_sections_only.sql` first.
+
+## FALCON inside RCL's ERP / HR app (23-11-2026 – "falcon seprate pn chalayla pahije ani erp hr madeh pn chalayla pahije")
+
+This app works on its own exactly as before. The same code is ALSO used by RCL's ERP / HR app (rcl-mobile 3.171.0, package `falcon`
+pinned by commit there): when the FALCON app is not on the phone, the Mess card opens FALCON's screens inside that app.
+* `lib/embed.dart` – `falconStart()` and `FalconInApp(pass, onLeave)`: FALCON's own router from `/hr?p=<HR's pass>` (no second
+  sign-in), its theme; the phone's back goes a page back, then FALCON's home, then out; "Back to RCL app" on FALCON's homes.
+* Inside the other app: pictures from this package (`assetPackage`), FALCON's own sign-up pages are not offered (`HrAgain`), the
+  update from inside the app is not used (it is this app's own).
+* The font has one name for both: `packages/falcon/Schibsted` (pubspec.yaml declares it under that name too).
+* A change here reaches the ERP / HR app when rcl-mobile moves its pinned commit (`pubspec.yaml` → `falcon` → `ref`).

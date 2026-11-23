@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/prefs.dart';
+import 'embed.dart';
 import 'core/session.dart';
 import 'screens/driver.dart' as drv;
 import 'screens/employee.dart' as emp;
@@ -28,7 +29,7 @@ class Need extends StatelessWidget {
     switch (s.status) {
       case Status.loading: return const Screen(children: [Loading()]);
       case Status.off: return const start.Setup();
-      case Status.signedout: case Status.noperson: return const start.Who();
+      case Status.signedout: case Status.noperson: return falconEmbedded ? const fromhr.HrAgain() : const start.Who();
       case Status.stopped: return const start.Stopped();
       case Status.ready: break;
     }
@@ -47,7 +48,7 @@ class Root extends StatelessWidget {
     switch (s.status) {
       case Status.loading: return const Screen(children: [Loading()]);
       case Status.off: return const start.Setup();
-      case Status.signedout: case Status.noperson: return const start.Who();
+      case Status.signedout: case Status.noperson: return falconEmbedded ? const fromhr.HrAgain() : const start.Who();
       case Status.stopped: return const start.Stopped();
       case Status.ready: break;
     }
@@ -81,9 +82,9 @@ class _GoState extends State<_Go> {
 GoRoute _r(String path, Widget Function(GoRouterState s) b) => GoRoute(path: path, builder: (c, s) => b(s));
 GoRoute _n(String path, List<String> roles, Widget Function(GoRouterState s) b) => GoRoute(path: path, builder: (c, s) => Need(roles, b(s)));
 
-GoRouter buildRouter(Session session) => GoRouter(
+GoRouter buildRouter(Session session, {String initial = '/'}) => GoRouter(
       refreshListenable: session,
-      initialLocation: '/',
+      initialLocation: initial,
       routes: [
         _r('/', (_) => const Root()),
         _r('/setup', (_) => const start.Setup()),

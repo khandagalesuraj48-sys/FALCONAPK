@@ -17,12 +17,12 @@ dependencies:
   shared_preferences: ^2.5.0    # this phone's token, the chosen mess
   mobile_scanner: ">=7.5.0 <8.0.0"  # the mess counter's QR
   image_picker: ^1.2.0          # a complaint's photo, the registration photo
-  record: ^7.2.0                # a complaint's voice
+  record: ">=6.0.0 <8.0.0"                # a complaint's voice
   path_provider: ^2.1.6
-  geolocator: ^14.1.0           # the van's place – only while it is on the way
+  geolocator: ">=14.0.0 <15.0.0"           # the van's place – only while it is on the way
   google_maps_flutter: ^2.9.0   # (23-11-2026) the Google map – the ERP's key at the build (MAPS_API_KEY); without it the drawn road
   url_launcher: ^6.3.0          # call the driver / the person
-  package_info_plus: ^10.2.2
+  package_info_plus: ">=8.0.0 <11.0.0"
   ota_update: ^7.1.0
 
 dev_dependencies:
@@ -37,6 +37,19 @@ flutter:
     - assets/brand/
   fonts:
     - family: Schibsted
+      fonts:
+        - asset: assets/fonts/SchibstedGrotesk-400.ttf
+          weight: 400
+        - asset: assets/fonts/SchibstedGrotesk-500.ttf
+          weight: 500
+        - asset: assets/fonts/SchibstedGrotesk-600.ttf
+          weight: 600
+        - asset: assets/fonts/SchibstedGrotesk-700.ttf
+          weight: 700
+        - asset: assets/fonts/SchibstedGrotesk-800.ttf
+          weight: 800
+    # (23-11-2026) the same files under the name RCL's ERP / HR app gives them when FALCON runs inside it (lib/ui/look.dart font)
+    - family: packages/falcon/Schibsted
       fonts:
         - asset: assets/fonts/SchibstedGrotesk-400.ttf
           weight: 400

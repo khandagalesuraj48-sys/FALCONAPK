@@ -11,6 +11,7 @@ import '../core/db.dart';
 import '../core/fmt.dart';
 import '../core/prefs.dart';
 import '../core/session.dart';
+import '../embed.dart';
 import '../ui/kit.dart';
 
 final passShape = RegExp(r'^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$');
@@ -58,7 +59,10 @@ class _FromHrState extends State<FromHr> {
           const Loading(what: 'Opening FALCON from HR')
         else ...[
           Failed(err),
-          Btn('Use FALCON\'s own sign-in', kind: BtnKind.ghost, onTap: () => context.go('/start')),
+          if (falconEmbedded && falconLeave != null)
+            Btn('Back to RCL app', kind: BtnKind.ghost, onTap: falconLeave!)
+          else
+            Btn('Use FALCON\'s own sign-in', kind: BtnKind.ghost, onTap: () => context.go('/start')),
         ],
       ]);
 }
@@ -77,4 +81,17 @@ void closeHrBanner() {
   if (v == null) return;
   v['banner'] = false;
   Prefs.hr = jsonEncode(v);
+}
+
+/// Inside RCL's ERP / HR app, signed out of FALCON (his sign-in there ended): Mess is opened again from that app – FALCON's own
+/// sign-up pages are for the FALCON app and its web.
+class HrAgain extends StatelessWidget {
+  const HrAgain({super.key});
+  @override
+  Widget build(BuildContext context) => Screen(children: [
+        const SizedBox(height: 60),
+        const Center(child: Logo(size: 96)),
+        const Failed('Your FALCON sign-in has ended – open Mess again from the HR / ERP app.'),
+        if (falconLeave != null) Btn('Back to RCL app', kind: BtnKind.ghost, onTap: falconLeave!),
+      ]);
 }
