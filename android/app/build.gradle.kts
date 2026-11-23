@@ -14,6 +14,7 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true   // (23-11-2026) ota_update asks for it – as the ERP app (rcl-mobile)
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -60,5 +61,6 @@ flutter {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")   // the same as the ERP app
     implementation("androidx.core:core:1.16.0")   // (23-11-2026) FileProvider – the update's file handed to Android's installer (UpdateKit.kt)
 }
