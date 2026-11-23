@@ -31,3 +31,15 @@ with a test build of before (the debug key) uninstalls it once and installs the 
 timeout 300 flutter analyze --no-fatal-infos
 timeout 300 flutter test
 ```
+
+## Where he is, Google Map, opened from HR (23-11-2026 – pictures N1–N8, approved "ho banaw")
+
+* **The mess home** reads the phone's place while it is open (`lib/core/geo.dart` – nothing is saved or sent): inside the mess's
+  area → "At the mess" and the counter QR; away → how far (a straight line), **Directions** (Google Maps), "Parcel". He can switch.
+  The meal follows the **server's clock** (`lib/core/clock.dart`: GET `/api/start`, then every 10 minutes).
+* **Google Map** (`lib/ui/gmap.dart`) on the home, tracking, the driver's route, the owner's route and live vans, choosing a section.
+  The key is the ERP's own, given at the build: GitHub → FALCONAPK → Settings → Secrets → Actions → **`MAPS_API_KEY`** (the same
+  value as the ERP app's secret – never in a file or in chat). Without it, or without places: the drawn road of before.
+* **Opened from HR:** the ERP / HR app opens `falcon://app/hr?p=<HR's pass>` (only this package); `/hr` (`lib/screens/from_hr.dart`)
+  sends the pass to FALCON's `/api/hr` and he is in – no company code, no WhatsApp code; "‹ HR" goes back.
+

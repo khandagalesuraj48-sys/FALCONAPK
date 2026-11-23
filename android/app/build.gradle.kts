@@ -29,6 +29,8 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // (23-11-2026) the Google Maps key from the build's environment (the GitHub secret MAPS_API_KEY – the ERP's key); empty = the drawn road
+        manifestPlaceholders["MAPS_API_KEY"] = System.getenv("MAPS_API_KEY") ?: ""
     }
 
     // (23-11-2026) as the ERP app: only the phones' processors are packed (no emulator parts); the release also makes one file per

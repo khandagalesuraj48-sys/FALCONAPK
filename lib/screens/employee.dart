@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -15,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/db.dart';
 import '../core/fmt.dart';
+import '../core/geo.dart';
 import '../core/meals.dart';
 import '../core/prefs.dart';
 import '../core/session.dart';
@@ -22,6 +24,8 @@ import '../core/update.dart';
 import '../ui/kit.dart';
 import '../ui/look.dart';
 import '../ui/road_map.dart';
+import '../ui/gmap.dart';
+import 'from_hr.dart' show hrToday, closeHrBanner;
 
 const empTabs = [
   TabItem('/app', 'house', 'Home'), TabItem('/app/orders', 'receipt', 'Orders'), TabItem('/app/scan', 'scan-line', 'Scan mess QR', plus: true),
@@ -83,7 +87,8 @@ class EmpHome extends StatelessWidget {
         String? dishes(String m) => (menus.where((r) => r['meal'] == m).firstOrNull?['dishes'] as List?)?.take(2).join(', ');
         const progress = {'requested': .15, 'accepted': .35, 'preparing': .5, 'ready': .6, 'dispatched': .8, 'delivered': 1.0};
         return Screen(
-          top: Top(left: Av(initials(s.name)), title: '${greeting()}, ${firstName(s.name)}',
+          // (23-11-2026, picture N8) opened from HR today: "‹ HR" goes back to the HR / ERP app
+          top: Top(left: hrToday() != null ? Chip2('HR', icon: 'chevron-left', height: 36, onTap: () => SystemNavigator.pop()) : Av(initials(s.name)), title: '${greeting()}, ${firstName(s.name)}',
               sub: '${s.homeSite != null ? '${s.homeSite!.code} · ${s.homeSite!.name}' : ''}${d.mess != null ? ' · ${d.mess!.name}' : ''}',
               right: IconBox(icon: 'bell', label: 'Notifications', badge: unread > 0, onTap: () => context.push('/app/notifications'))),
           tabs: tabsFor(s, '/app'),
@@ -91,16 +96,8 @@ class EmpHome extends StatelessWidget {
             if (s.state == 'temporary')
               FCard(color: C.amberS, border: C.amberS, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), onTap: () => context.push('/start/temporary'),
                   child: _row([const Ico('clock-alert', size: 16, color: C.amber), Expanded(child: Text('Temporary access – waiting for the Site Admin', style: T.sm.copyWith(color: C.amber))), const Ico('chevron-right', size: 16, color: C.amber)])),
-            Hero2(child: _col([
-              _row([Chip2('${mealName(meal)} · ${st.open ? 'open ${st.label}' : st.label}', tone: Tone.sf, height: 26), const Spacer(), Text(dayLong(today()), style: T.xs.copyWith(color: C.heroSub))]),
-              Text(st.open ? 'Your $meal is ready to order' : d.mess != null ? 'No meal open right now' : 'Your site has no mess yet',
-                  style: const TextStyle(fontFamily: font, fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: Colors.white)),
-              if (w != null) _row([const Ico('clock', size: 16, color: C.heroSub), Expanded(child: Text('Parcels asked by ${w.orderBy} · served ${w.serveFrom}–${w.serveTo}', style: T.sm.copyWith(color: C.heroSub)))]),
-              _row([
-                Expanded(child: Btn('Scan QR', icon: 'scan-line', kind: BtnKind.gold, onTap: () => context.push('/app/scan'))),
-                Expanded(child: Btn('Parcel', icon: 'package', kind: BtnKind.ghost, dark: true, onTap: () => context.push('/app/parcel'))),
-              ], gap: 10),
-            ], gap: 12)),
+            // (23-11-2026, pictures N1, N2, N8) where he is: at the mess → "At the mess"; away → how far, the way, "Parcel"; opened from HR
+            PlaceHero(s: s, d: d, meal: meal, w: w, st: st),
             if (o != null)
               FCard(lift: true, onTap: () => context.push('/app/orders/${o['id']}'), child: _col([
                 _row([
@@ -148,6 +145,136 @@ class EmpHome extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+// ── N1 / N2 / N8 · the top of the mess home: where he is (23-11-2026, his word: "app swata check krel user kuthe aahe – mess location
+// madhe to asel tr mess ch auto yeil, mess pasun lamb asel tr mess che direction kiti lamb te dakhwel ani auto parcel ok day night auto
+// select asel server time asel") – the same as the web's Home. The meal is the server's (core/fmt.dart istNow). ──
+class PlaceHero extends StatefulWidget {
+  const PlaceHero({super.key, required this.s, required this.d, required this.meal, required this.w, required this.st});
+  final Session s;
+  final MessDay d;
+  final String meal;
+  final Win? w;
+  final WinState st;
+  @override
+  State<PlaceHero> createState() => _PlaceHeroState();
+}
+
+class _PlaceHeroState extends State<PlaceHero> {
+  String? pick; // 'mess' | 'parcel' – his own choice over the automatic one
+  bool get _hasPlace => widget.d.mess?.lat != null && widget.d.mess?.lng != null;
+  @override
+  void initState() {
+    super.initState();
+    Here.i.addListener(_moved);
+    if (_hasPlace) Here.i.use();
+  }
+
+  void _moved() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    Here.i.removeListener(_moved);
+    if (_hasPlace) Here.i.done();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.d.mess, meal = widget.meal, w = widget.w, st = widget.st, h = Here.i, hr = hrToday();
+    final ok = _hasPlace && h.state == 'ok';
+    final here = ok ? atMess(h.lat, h.lng, h.acc, m!.lat, m.lng, m.radiusM) : null;
+    final away = ok ? metres(h.lat, h.lng, m!.lat!, m.lng!) : null;
+    final mode = pick ?? (here == true ? 'mess' : here == false ? 'parcel' : null);
+    final title = m == null ? 'Your site has no mess yet' : !st.open ? 'No meal open right now' : mode == 'mess' ? '${mealName(meal)} at the mess'
+        : mode == 'parcel' ? '${mealName(meal)} parcel to your section' : 'Your $meal is ready to order';
+    Widget seg() => Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(color: const Color(0xFF1F3354), borderRadius: BorderRadius.circular(14)),
+          child: Row(children: [
+            for (final (k, l) in const [('mess', 'At the mess'), ('parcel', 'Parcel')])
+              Expanded(child: Semantics(selected: mode == k, button: true, child: GestureDetector(
+                key: Key('home-mode-$k'),
+                onTap: () => setState(() => pick = k),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: mode == k ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(10)),
+                  child: Text(l, style: TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w600, color: mode == k ? C.ink : C.heroSub)),
+                ),
+              ))),
+          ]),
+        );
+    return _col([
+      if (hr != null && hr['banner'] == true) ...[
+        FCard(color: C.leafS, border: C.leafS, padding: const EdgeInsets.fromLTRB(14, 10, 6, 10), child: _row([
+          const Ico('shield-check', color: C.leafD),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Signed in through RCL HR', style: T.b.copyWith(fontSize: 14, color: C.leafD)),
+            Text('${widget.s.name}${widget.s.me?['rcl_id'] != null ? ' · ${widget.s.me!['rcl_id']}' : ''} · no code needed again', style: T.xs.copyWith(color: C.leafD)),
+          ])),
+          IconButton(key: const Key('hr-banner-close'), tooltip: 'Close', onPressed: () => setState(closeHrBanner), icon: const Ico('x', size: 18, color: C.leafD)),
+        ], gap: 10)),
+        FCard(child: _col([
+          Text('Comes from HR by itself', style: T.h2),
+          for (final (ic, t) in const [('id-card', 'Name, employee code, site, mobile'), ('user-check', 'Present today (HR attendance)'), ('users', 'New employee or new site in HR – in the mess too')])
+            _row([Ico(ic, size: 16, color: C.muted), Expanded(child: Text(t, style: T.sm)), const Ico('check', size: 16, color: C.leaf)]),
+        ], gap: 10)),
+      ],
+      Hero2(child: _col([
+        _row([
+          if (here == true) Chip2('You are at ${m!.name}', icon: 'map-pin', tone: Tone.leaf, height: 26)
+          else if (here == false && away != null) Chip2('${distText(away)} from ${m!.name}', icon: 'route', tone: Tone.sf, height: 26)
+          else Chip2('${mealName(meal)} · ${st.open ? 'open ${st.label}' : st.label}', tone: Tone.sf, height: 26),
+          const Spacer(),
+          Text(mode != null ? nowHM() : dayLong(today()), style: T.xs.copyWith(color: C.heroSub)),
+        ]),
+        Text(title, key: const Key('home-title'), style: const TextStyle(fontFamily: font, fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: Colors.white)),
+        if (w != null)
+          mode != null
+              ? _row([Ico(meal == 'dinner' ? 'moon' : 'sun', size: 16, color: C.heroSub), Expanded(child: Text('${mealName(meal)} by the server\'s time · ${mode == 'parcel' ? 'ask by ${w.orderBy}' : 'open till ${w.serveTo}'}', style: T.sm.copyWith(color: C.heroSub)))])
+              : _row([const Ico('clock', size: 16, color: C.heroSub), Expanded(child: Text('Parcels asked by ${w.orderBy} · served ${w.serveFrom}–${w.serveTo}', style: T.sm.copyWith(color: C.heroSub)))]),
+        if (hr != null && hr['in'] is String) _row([const Ico('user-check', size: 16, color: Color(0xFF7FD39A)), Expanded(child: Text('Present since ${hr['in']} · from HR attendance', style: T.sm.copyWith(color: C.heroSub)))]),
+        if (mode != null) ...[
+          seg(),
+          mode == 'mess'
+              ? Btn('Scan the counter QR', icon: 'scan-line', kind: BtnKind.gold, onTap: () => context.push('/app/scan'))
+              : Btn('Ask $meal parcel', icon: 'package', kind: BtnKind.gold, onTap: () => context.push('/app/parcel')),
+        ] else
+          _row([
+            Expanded(child: Btn('Scan QR', icon: 'scan-line', kind: BtnKind.gold, onTap: () => context.push('/app/scan'))),
+            Expanded(child: Btn('Parcel', icon: 'package', kind: BtnKind.ghost, dark: true, onTap: () => context.push('/app/parcel'))),
+          ], gap: 10),
+      ], gap: 12)),
+      if (_hasPlace && m != null)
+        FCard(padding: EdgeInsets.zero, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: GMap(height: here == true ? 118 : 200, label: 'Map: you and ${m.name}', fallback: const SizedBox.shrink(), ring: (m.lat!, m.lng!, (m.radiusM ?? 100).toDouble()),
+                marks: [Mark(m.lat!, m.lng!, 'mess', title: m.name), if (ok) Mark(h.lat, h.lng, 'you', title: 'You')]),
+          ),
+          Padding(padding: const EdgeInsets.fromLTRB(14, 12, 14, 12), child: ok && away != null
+              ? (here == true
+                  ? _row([const Tile('circle-check', tone: Tone.leaf, size: 40), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Inside the mess area', key: const Key('home-place'), style: T.b), Text('${distText(away)} from the mess · by your phone\'s location', style: T.xs)]))], gap: 12)
+                  : _row([
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('${distText(away)} away', key: const Key('home-place'), style: T.b), Text('Going to the mess? Meal at the mess comes by itself there.', style: T.xs)])),
+                      Btn('Directions', icon: 'navigation', kind: BtnKind.ghost, small: true, expand: false, onTap: () => launchUrl(directionsUrl(m.lat!, m.lng!), mode: LaunchMode.externalApplication)),
+                    ], gap: 10))
+              : h.state == 'asking'
+                  ? Text('Finding where you are…', style: T.xs)
+                  : _row([
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Location is off', key: const Key('home-place'), style: T.b), Text('Turn it on – the app then chooses "At the mess" or "Parcel" by itself.', style: T.xs)])),
+                      Btn('Try again', kind: BtnKind.ghost, small: true, expand: false, onTap: () => Here.i.ask()),
+                    ], gap: 10)),
+        ])),
+    ], gap: 14);
   }
 }
 
@@ -434,7 +561,9 @@ class _SectionPickState extends State<SectionPick> {
           foot: foot([Btn('Deliver to ${chosen != null ? '${chosen['code']}${chosen['km'] != null ? ' · Km ${chosen['km']}' : ''}' : '…'}', kind: BtnKind.leaf,
               onTap: chosen == null ? null : () { pickedSection = sel; context.pop(); })]),
           children: [
-            ClipRRect(borderRadius: BorderRadius.circular(20), child: RoadMap(sections: map.sections, circles: map.circles, mine: sel, height: 220, label: 'The road with its sections')),
+            ClipRRect(borderRadius: BorderRadius.circular(20), child: GMap(height: 220, label: 'Map: the site\'s sections',
+                marks: [for (final x in secs) if (x['lat'] != null && x['lng'] != null) Mark(toD(x['lat']), toD(x['lng']), x['id'] == sel ? 'mine' : 'stop', label: '${x['code']}', title: '${x['name']}')],
+                fallback: RoadMap(sections: map.sections, circles: map.circles, mine: sel, height: 220, label: 'The road with its sections'))),
             Wrap2([
               Chip2('All', tone: circle.isEmpty ? Tone.on : Tone.plain, onTap: () => setState(() => circle = '')),
               for (final c in map.circles) Chip2('Circle ${c.code}', tone: circle == c.code ? Tone.on : Tone.plain, onTap: () => setState(() => circle = c.code)),
@@ -734,15 +863,15 @@ class Track extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = SessionScope.of(context);
-    return Load<(Rec?, List<Rec>, OrderData?)>(
+    return Load<(Rec?, List<Rec>, OrderData?, Mess?)>(
       watch: const ['batches', 'batch_stops', 'track_points'],
       loading: const Screen(top: Top(title: 'Track', back: ''), children: [Loading()]),
       load: () async {
         final d = await messDay(s);
-        return (await loadVan(id), await sections(d.mess?.siteId), await loadOrder(id));
+        return (await loadVan(id), await sections(d.mess?.siteId), await loadOrder(id), d.mess);
       },
       builder: (context, x, reload) {
-        final (v, secs, r) = x;
+        final (v, secs, r, mess) = x;
         if (v == null) return const Screen(top: Top(title: 'Track', back: ''), children: [Empty(icon: 'truck', title: 'Not on the way', text: 'The van\'s place is shown only while your parcel is on the way.')]);
         final stops = _stops(v), mine = stops.where((x) => x['mine'] == true).firstOrNull;
         final reached = stops.where((x) => x['reached_at'] != null).toList();
@@ -756,8 +885,21 @@ class Track extends StatelessWidget {
         return Screen(
           top: Top(title: 'Track', sub: ago != null ? 'Live · updated ${ago < 60 ? '$ago s' : '${(ago / 60).round()} min'} ago' : 'Waiting for the van\'s place', back: ''),
           children: [
-            ClipRRect(borderRadius: BorderRadius.circular(20), child: RoadMap(sections: map.sections, circles: map.circles, mine: mineId, van: v['state'] == 'on_the_way' ? vanKm : null,
-                done: [for (final x in secs) if (stops.any((y) => y['section'] == x['code'] && y['reached_at'] != null)) '${x['id']}'], height: 300, label: 'The van on the road')),
+            // (23-11-2026, picture N3) the Google map: the mess, the stops with a place, the van where its driver's phone last said
+            Builder(builder: (_) {
+              Rec? sec(Object? code) => secs.where((y) => y['code'] == code && y['lat'] != null && y['lng'] != null).firstOrNull;
+              final last = v['state'] == 'on_the_way' && v['last'] is Map && (v['last'] as Map)['lat'] != null ? v['last'] as Map : null;
+              final stopMarks = [for (final y in stops) if (sec(y['section']) != null) Mark(toD(sec(y['section'])!['lat']), toD(sec(y['section'])!['lng']), y['mine'] == true ? 'mine' : y['reached_at'] != null ? 'done' : 'stop', label: '${y['section']}', title: 'Section ${y['section']}')];
+              final marks = stopMarks.isEmpty && last == null ? <Mark>[] : [
+                if (mess?.lat != null && mess?.lng != null) Mark(mess!.lat!, mess.lng!, 'mess', title: mess.name),
+                ...stopMarks,
+                if (last != null) Mark(toD(last['lat']), toD(last['lng']), 'van', title: '${v['vehicle'] ?? 'Van'}'),
+              ];
+              return ClipRRect(borderRadius: BorderRadius.circular(20), child: GMap(height: 300, label: 'Map: the van, the mess and the stops', marks: marks,
+                  line: last == null ? const [] : [(toD(last['lat']), toD(last['lng'])), for (final y in stops) if (y['reached_at'] == null && sec(y['section']) != null) (toD(sec(y['section'])!['lat']), toD(sec(y['section'])!['lng']))],
+                  fallback: RoadMap(sections: map.sections, circles: map.circles, mine: mineId, van: v['state'] == 'on_the_way' ? vanKm : null,
+                      done: [for (final x in secs) if (stops.any((y) => y['section'] == x['code'] && y['reached_at'] != null)) '${x['id']}'], height: 300, label: 'The van on the road')));
+            }),
             FCard(child: _col([
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

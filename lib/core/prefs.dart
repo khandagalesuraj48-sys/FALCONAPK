@@ -22,4 +22,14 @@ class Prefs {
       unawaited(_p?.setString('falcon.door', v));
     }
   }
+
+  /// (23-11-2026, picture N8) opened from HR: what HR said for today – {day, in, banner} (JSON) – kept until the next day
+  static String? get hr => _p?.getString('falcon.hr');
+  static set hr(String? v) {
+    if (v == null) {
+      unawaited(_p?.remove('falcon.hr'));
+    } else {
+      unawaited(_p?.setString('falcon.hr', v));
+    }
+  }
 }

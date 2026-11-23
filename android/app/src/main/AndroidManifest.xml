@@ -33,7 +33,17 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- (23-11-2026, picture N8) opened from RCL's HR / ERP app with HR's pass: falcon://app/hr?p=… (the ERP app sends it to this
+                 package only; not BROWSABLE – a web page cannot open it). Flutter hands the path to the app's router (/hr). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="falcon" android:host="app" android:pathPrefix="/hr"/>
+            </intent-filter>
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="true"/>
         </activity>
+        <!-- (23-11-2026) the Google map: the ERP's own key, from the build (the GitHub secret MAPS_API_KEY); empty = the drawn road -->
+        <meta-data android:name="com.google.android.geo.API_KEY" android:value="${MAPS_API_KEY}"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

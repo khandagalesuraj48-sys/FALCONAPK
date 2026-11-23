@@ -7,6 +7,7 @@ import 'core/prefs.dart';
 import 'core/session.dart';
 import 'screens/driver.dart' as drv;
 import 'screens/employee.dart' as emp;
+import 'screens/from_hr.dart' as fromhr;
 import 'screens/guest.dart' as guest;
 import 'screens/owner.dart' as own_;
 import 'screens/start.dart' as start;
@@ -98,6 +99,8 @@ GoRouter buildRouter(Session session) => GoRouter(
         _r('/start/back', (_) => const start.Back()),
         _r('/start/temporary', (_) => const start.Waiting()),
         _r('/guest/new', (_) => const start.GuestNew()),
+        // (23-11-2026, picture N8) opened from RCL's HR / ERP app: falcon://app/hr?p=<HR's pass> – no second sign-in
+        _r('/hr', (s) => fromhr.FromHr(pass: s.uri.queryParameters['p'] ?? '')),
         // a mess counter's QR read by the phone's own camera: the mess is remembered, then the meal at that counter
         GoRoute(path: '/m/:id', redirect: (c, s) {
           final id = s.pathParameters['id'] ?? '';
