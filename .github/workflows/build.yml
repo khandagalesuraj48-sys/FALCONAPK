@@ -49,7 +49,13 @@ jobs:
           SB_SECRET: ${{ secrets.FALCON_SUPABASE_SECRET }}
         run: |
           if [ -z "$SB_URL" ] || [ -z "$SB_SECRET" ]; then
-            echo "::warning::No FALCON_SUPABASE_SECRET (GitHub → Settings → Secrets) – this APK is signed with the debug key and main is not released."; exit 0
+            echo "::warning::No FALCON_SUPABASE_SECRET (GitHub → Settings → Secrets) – this APK is signed with the debug key and main is not released."
+            # one debug key for this build's three files (each build of Android made its own before); thrown away after the build
+            K="$RUNNER_TEMP/falcon-debug"; mkdir -p "$K"; DP=$(openssl rand -hex 16); echo "::add-mask::$DP"
+            keytool -genkeypair -keystore "$K/debug.jks" -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 30 -alias androiddebugkey \
+              -storepass "$DP" -keypass "$DP" -dname "CN=Android Debug, O=Android, C=US" >/dev/null 2>&1
+            printf "FALCON_KEYSTORE_PATH=%s\nFALCON_KEYSTORE_PASSWORD=%s\nFALCON_KEY_ALIAS=androiddebugkey\nFALCON_KEY_PASSWORD=%s\n" "$K/debug.jks" "$DP" "$DP" >> "$GITHUB_ENV"
+            exit 0
           fi
           echo "::add-mask::$SB_SECRET"
           SB_URL="${SB_URL%/}"; K="$RUNNER_TEMP/falcon-key"; mkdir -p "$K"
@@ -129,8 +135,12 @@ jobs:
             grep -q "CN=Android Debug" certs.txt && KEY=debug
             vc=$("${AS}aapt2" dump badging "$f" 2>/dev/null | grep -o "versionCode='[0-9]*'" | head -1)
             [ "$vc" = "versionCode='$BN'" ] || { echo "::error::$f has $vc, not $BN."; exit 1; }
-            echo "::notice::$f signed by: $(grep -m1 'certificate SHA-256 digest' certs.txt | sed 's/.*: //') – $vc"
+            dg=$(grep -m1 'certificate SHA-256 digest' certs.txt | sed 's/.*: //')
+            echo "::notice::$f signed by: $dg – $vc"
+            echo "$dg" >> digests.txt
           done
+          # (23-11-2026) every file by ONE key – a phone that has one file must be able to take the update of another
+          [ "$(sort -u digests.txt | wc -l)" = 1 ] || { echo "::error::The files are signed by different keys:"; sort -u digests.txt; exit 1; }
           echo "KEY=$KEY" >> "$GITHUB_ENV"
       - name: The release's notes (what is new, the build number and the fingerprints – read by the app's update)
         env:
