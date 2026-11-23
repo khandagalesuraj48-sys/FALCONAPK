@@ -69,23 +69,23 @@ Widget _tick(bool on, {double size = 26}) => Container(width: size, height: size
     border: on ? null : Border.all(color: C.line2, width: 1.5)), child: on ? const Center(child: Ico('check', size: 16, color: Colors.white)) : null);
 
 /// Loads the owner's mess first, then the screen's own data.
-class _WithMess<T> extends StatelessWidget {
+class _WithMess<D> extends StatelessWidget {
   const _WithMess({super.key, required this.load, required this.builder, this.watch = const [], this.title = 'My mess'});
-  final Future<T> Function(OwnerMess m) load;
-  final Widget Function(BuildContext context, OwnerMess m, T data, VoidCallback reload) builder;
+  final Future<D> Function(OwnerMess m) load;
+  final Widget Function(BuildContext context, OwnerMess m, D data, VoidCallback reload) builder;
   final List<String> watch;
   final String title;
   @override
   Widget build(BuildContext context) {
     final s = SessionScope.of(context);
-    return Load<(OwnerMess, T?)>(
+    return Load<(OwnerMess, D?)>(
       watch: watch,
       loading: Screen(top: Top(title: title), children: const [Loading()]),
       load: () async {
         final m = await ownerMess(s);
         return (m, m.mess == null ? null : await load(m));
       },
-      builder: (context, x, reload) => x.$1.mess == null ? _noMess : builder(context, x.$1, x.$2 as T, reload),
+      builder: (context, x, reload) => x.$1.mess == null ? _noMess : builder(context, x.$1, x.$2 as D, reload),
     );
   }
 }

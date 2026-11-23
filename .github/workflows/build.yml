@@ -1,10 +1,15 @@
-# FALCON's Android app file (APK), built on every push: the app is checked (analyze, tests) and built. On a push to main the APK
-# is also put up as a GitHub Release ("Latest") – the file to download and install.
+# FALCON's Android app file (APK), built on every push: the app is checked (analyze, tests) and built.
+#   * main (a pull request merged – his yes): a GitHub Release ("Latest") – the file to install the first time, and what the app's own
+#     update looks at (lib/core/update.dart): the file for every phone, one file per processor (a phone's update downloads only its own),
+#     their fingerprints and the build number in the notes. Only with FALCON's permanent signing key – never the debug key.
+#   * another branch: a TEST build (a pre-release) – to try a change on a phone before it is merged; the app never offers it.
 # The settings come from GitHub → Settings → Secrets and variables → Actions:
-#   Variables (or Secrets): FALCON_SUPABASE_URL, FALCON_SUPABASE_KEY (the PUBLISHABLE key – public by design; a SECRET key stops the
-#   build), FALCON_SERVER, FALCON_COMPANY
-#   Secrets (optional – Sketchline's own signing key): FALCON_KEYSTORE_B64, FALCON_KEYSTORE_PASSWORD, FALCON_KEY_ALIAS, FALCON_KEY_PASSWORD
-# Without the variables the app opens its "not connected" page; without the key it is signed with the debug key (said in the run).
+#   Variables (or Secrets): FALCON_SUPABASE_URL, FALCON_SUPABASE_KEY (the PUBLISHABLE key – public by design; a SECRET key there stops
+#   the build), FALCON_SERVER, FALCON_COMPANY
+#   Secret: FALCON_SUPABASE_SECRET – a SECRET key of FALCON's Supabase (Project Settings → API Keys → Secret keys). Used ONLY by this
+#   build to keep the signing key (23-11-2026, his answer: like the ERP's): the key is made ONCE and kept only in the private bucket
+#   "app-keys" of FALCON's Supabase – Android installs an update only when it carries the same key, so it must never change. It is
+#   never in a file of this repository, never in chat, and the secret key is never built into the app.
 name: build
 on:
   push:
@@ -18,7 +23,9 @@ concurrency:
 jobs:
   apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    env:
+      BN: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -36,18 +43,51 @@ jobs:
         run: flutter analyze --no-fatal-infos
       - name: Tests
         run: flutter test --reporter expanded
-      - name: Signing key (when given)
+      - name: The permanent signing key (made once; kept only in the private bucket app-keys of FALCON's Supabase)
         env:
-          KS: ${{ secrets.FALCON_KEYSTORE_B64 }}
+          SB_URL: ${{ vars.FALCON_SUPABASE_URL || secrets.FALCON_SUPABASE_URL }}
+          SB_SECRET: ${{ secrets.FALCON_SUPABASE_SECRET }}
         run: |
-          if [ -z "$KS" ]; then echo "::warning::No signing key (FALCON_KEYSTORE_B64) – this APK is signed with the debug key."; exit 0; fi
-          printf '%s' "$KS" | base64 -d > "$RUNNER_TEMP/falcon.jks"
-          echo "FALCON_KEYSTORE_PATH=$RUNNER_TEMP/falcon.jks" >> "$GITHUB_ENV"
-      - name: Android app (APK)
+          if [ -z "$SB_URL" ] || [ -z "$SB_SECRET" ]; then
+            echo "::warning::No FALCON_SUPABASE_SECRET (GitHub → Settings → Secrets) – this APK is signed with the debug key and main is not released."
+            # one debug key for this build's three files (each build of Android made its own before); thrown away after the build
+            K="$RUNNER_TEMP/falcon-debug"; mkdir -p "$K"; DP=$(openssl rand -hex 16); echo "::add-mask::$DP"
+            keytool -genkeypair -keystore "$K/debug.jks" -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 30 -alias androiddebugkey \
+              -storepass "$DP" -keypass "$DP" -dname "CN=Android Debug, O=Android, C=US" >/dev/null 2>&1
+            printf "FALCON_KEYSTORE_PATH=%s\nFALCON_KEYSTORE_PASSWORD=%s\nFALCON_KEY_ALIAS=androiddebugkey\nFALCON_KEY_PASSWORD=%s\n" "$K/debug.jks" "$DP" "$DP" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "::add-mask::$SB_SECRET"
+          SB_URL="${SB_URL%/}"; K="$RUNNER_TEMP/falcon-key"; mkdir -p "$K"
+          c=$(curl -sS -o /tmp/b.json -w "%{http_code}" -X POST "$SB_URL/storage/v1/bucket" -H "apikey: $SB_SECRET" -H "Content-Type: application/json" -d '{"id":"app-keys","name":"app-keys","public":false}')
+          if [ "$c" = "200" ]; then echo "::notice::Bucket app-keys made (private)."; elif grep -qiE "exist|duplicate" /tmp/b.json; then echo "bucket app-keys is there"; else echo "::error::Bucket app-keys: $c $(head -c 200 /tmp/b.json)"; exit 1; fi
+          get() { curl -sS -o "$K/$1" -w "%{http_code}" "$SB_URL/storage/v1/object/app-keys/$1" -H "apikey: $SB_SECRET"; }
+          put() { curl -sS -o /tmp/put.json -w "%{http_code}" -X POST "$SB_URL/storage/v1/object/app-keys/$1" -H "apikey: $SB_SECRET" -H "Content-Type: $2" -H "x-upsert: false" --data-binary "@$K/$1"; }
+          if [ "$(get falcon-keystore.jks)" = "200" ] && [ "$(get key.properties)" = "200" ]; then
+            echo "the signing key is there"
+          else
+            rm -f "$K/falcon-keystore.jks" "$K/key.properties"
+            PW=$(openssl rand -hex 24); echo "::add-mask::$PW"
+            keytool -genkeypair -keystore "$K/falcon-keystore.jks" -storetype PKCS12 -keyalg RSA -keysize 4096 -validity 36500 -alias falcon \
+              -storepass "$PW" -keypass "$PW" -dname "CN=Sketchline Industries, O=Sketchline, C=IN" >/dev/null 2>&1
+            printf "storePassword=%s\nkeyPassword=%s\nkeyAlias=falcon\n" "$PW" "$PW" > "$K/key.properties"
+            if [ "$(put falcon-keystore.jks application/octet-stream)" = "200" ] && [ "$(put key.properties text/plain)" = "200" ]; then
+              echo "::notice::A NEW signing key was made and kept in the private bucket app-keys of FALCON's Supabase. Download a copy from Supabase and keep it offline."
+            else
+              # another build made it at the same moment: that one is THE key – taken
+              [ "$(get falcon-keystore.jks)" = "200" ] && [ "$(get key.properties)" = "200" ] || { echo "::error::Could not keep the signing key: $(head -c 200 /tmp/put.json)"; exit 1; }
+              echo "the signing key made by another build is taken"
+            fi
+          fi
+          PW=$(grep '^storePassword=' "$K/key.properties" | cut -d= -f2-); echo "::add-mask::$PW"
+          {
+            echo "FALCON_KEYSTORE_PATH=$K/falcon-keystore.jks"
+            echo "FALCON_KEYSTORE_PASSWORD=$PW"
+            echo "FALCON_KEY_ALIAS=$(grep '^keyAlias=' "$K/key.properties" | cut -d= -f2-)"
+            echo "FALCON_KEY_PASSWORD=$(grep '^keyPassword=' "$K/key.properties" | cut -d= -f2-)"
+          } >> "$GITHUB_ENV"
+      - name: Android app – the file for every phone and one file per processor (the same build number)
         env:
-          FALCON_KEYSTORE_PASSWORD: ${{ secrets.FALCON_KEYSTORE_PASSWORD }}
-          FALCON_KEY_ALIAS: ${{ secrets.FALCON_KEY_ALIAS }}
-          FALCON_KEY_PASSWORD: ${{ secrets.FALCON_KEY_PASSWORD }}
           # (23-11-2026) taken from Variables, or from Secrets when they were put there
           SB_URL: ${{ vars.FALCON_SUPABASE_URL || secrets.FALCON_SUPABASE_URL }}
           SB_KEY: ${{ vars.FALCON_SUPABASE_KEY || secrets.FALCON_SUPABASE_KEY }}
@@ -65,50 +105,93 @@ jobs:
             exit 1
           fi
           V=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
-          flutter build apk --release --build-number=${{ github.run_number }} \
-            --dart-define=FALCON_SUPABASE_URL="$SB_URL" \
-            --dart-define=FALCON_SUPABASE_KEY="$SB_KEY" \
-            --dart-define=FALCON_SERVER="$SERVER" \
-            --dart-define=FALCON_COMPANY="$COMPANY" \
-            --dart-define=FALCON_VERSION=$V
-          mkdir -p out && cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-${{ github.run_number }}.apk"
-          echo "APK=out/FALCON-$V-${{ github.run_number }}.apk" >> "$GITHUB_ENV"
           echo "VER=$V" >> "$GITHUB_ENV"
-          ls -la out
+          mkdir -p out
+          build() {
+            flutter build apk --release --build-name="$V" --build-number="$BN" "$@" \
+              --dart-define=FALCON_SUPABASE_URL="$SB_URL" \
+              --dart-define=FALCON_SUPABASE_KEY="$SB_KEY" \
+              --dart-define=FALCON_SERVER="$SERVER" \
+              --dart-define=FALCON_COMPANY="$COMPANY" \
+              --dart-define=FALCON_VERSION="$V"
+          }
+          build --target-platform android-arm,android-arm64
+          cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-$BN.apk"
+          for a in arm64-v8a:android-arm64 armeabi-v7a:android-arm; do
+            abi=${a%%:*}; tp=${a##*:}
+            FALCON_ABIS=$abi build --target-platform "$tp"
+            cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-$BN.$abi.apk"
+            other=$(unzip -l "out/FALCON-$V-$BN.$abi.apk" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | grep -vx "$abi" || true)
+            [ -z "$other" ] || { echo "::error::FALCON-$V-$BN.$abi.apk also has the parts of: $other"; exit 1; }
+          done
+          for f in out/*.apk; do echo "::notice::$f: $(( $(stat -c %s "$f") / 1048576 )) MB"; done
+          echo "APK=out/FALCON-$V-$BN.apk" >> "$GITHUB_ENV"
+      - name: The signatures (the permanent key or the debug key) and the build number (the same in every file)
+        run: |
+          AS=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          KEY=permanent
+          for f in out/*.apk; do
+            "${AS}apksigner" verify --print-certs "$f" > certs.txt
+            grep -q "CN=Android Debug" certs.txt && KEY=debug
+            vc=$("${AS}aapt2" dump badging "$f" 2>/dev/null | grep -o "versionCode='[0-9]*'" | head -1)
+            [ "$vc" = "versionCode='$BN'" ] || { echo "::error::$f has $vc, not $BN."; exit 1; }
+            dg=$(grep -m1 'certificate SHA-256 digest' certs.txt | sed 's/.*: //')
+            echo "::notice::$f signed by: $dg – $vc"
+            echo "$dg" >> digests.txt
+          done
+          # (23-11-2026) every file by ONE key – a phone that has one file must be able to take the update of another
+          [ "$(sort -u digests.txt | wc -l)" = 1 ] || { echo "::error::The files are signed by different keys:"; sort -u digests.txt; exit 1; }
+          echo "KEY=$KEY" >> "$GITHUB_ENV"
+      - name: The release's notes (what is new, the build number and the fingerprints – read by the app's update)
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          V="$VER"
+          s() { sha256sum "$1" | cut -d' ' -f1; }
+          NEW=$(printf '%s\n' "$MSG" | awk 'NR==1 && /^Merge pull request/ {skip=1; next} skip && NF==0 {next} {print}' | grep -v -E '^(Co-Authored-By|Claude-Session):' | sed '/^[[:space:]]*$/d' | head -12)
+          {
+            echo "FALCON – Food & Site Operations (Sketchline Industries) $V, build $BN."
+            echo "Download the .apk (the first file) on the phone and install it. After that the app updates itself (Me → Check for update)."
+            echo
+            echo "<!-- falcon-new -->"
+            printf '%s\n' "${NEW:-FALCON $V}"
+            echo "<!-- /falcon-new -->"
+            echo
+            echo "Built from ${{ github.sha }}."
+            echo "<!-- falcon:{\"build\":$BN,\"version\":\"$V\",\"sha256\":\"$(s out/FALCON-$V-$BN.apk)\",\"apk\":{\"arm64-v8a\":\"$(s out/FALCON-$V-$BN.arm64-v8a.apk)\",\"armeabi-v7a\":\"$(s out/FALCON-$V-$BN.armeabi-v7a.apk)\"}} -->"
+          } > notes.md
+          cat notes.md
       - uses: actions/upload-artifact@v4
         with:
           name: FALCON-apk
           path: out/*.apk
-          retention-days: 30
-      # (23-11-2026, his word: "adhi mala APK de") a TEST build of the app's working branch, to install on a phone before main exists:
-      # marked "Pre-release", never "Latest".
-      - name: Test build (falcon-app)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/falcon-app'
+          retention-days: 14
+      # a TEST build of a branch (not main), to try a change on a phone before it is merged: a pre-release, never "Latest"; the app's
+      # update never offers it
+      - name: Test build (a branch)
+        if: github.event_name == 'push' && github.ref != 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: test-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: FALCON ${{ env.VER }} – test build ${{ github.run_number }}
+          name: FALCON ${{ env.VER }} – test build ${{ github.run_number }} (${{ github.ref_name }}${{ env.KEY == 'debug' && ', debug key' || '' }})
           prerelease: true
           make_latest: false
           files: ${{ env.APK }}
-          body: |
-            TEST build of FALCON – Food & Site Operations (Sketchline Industries), from the branch falcon-app (${{ github.sha }}).
-            Download the .apk below on the phone and install it. Not the final app: parts still come in the next builds.
-      # (23-11-2026, his answers: main is made; the signing key is FALCON's own, kept like the ERP's) a release of main only with the
-      # app's permanent key – never with the debug key (a phone could never take its update)
-      - name: Permanent key?
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          if [ -z "$FALCON_KEYSTORE_PATH" ]; then echo "::warning::No permanent signing key yet – main is built, nothing is released."; echo "RELEASE=no" >> "$GITHUB_ENV"; else echo "RELEASE=yes" >> "$GITHUB_ENV"; fi
-      - name: Release (main only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.RELEASE == 'yes'
+          body_path: notes.md
+      - name: Release (main – only with the permanent key)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.KEY == 'debug'
+        run: echo "::warning::main is built with the debug key – NOT released (add FALCON_SUPABASE_SECRET; the next merge is released)."
+      - name: Release (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.KEY == 'permanent'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VER }}-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
           name: FALCON ${{ env.VER }} (build ${{ github.run_number }})
           make_latest: true
-          files: ${{ env.APK }}
-          body: |
-            FALCON – Food & Site Operations (Sketchline Industries). Android app file: download the .apk below and install it.
-            Built from ${{ github.sha }}.
+          files: |
+            out/FALCON-${{ env.VER }}-${{ github.run_number }}.apk
+            out/FALCON-${{ env.VER }}-${{ github.run_number }}.arm64-v8a.apk
+            out/FALCON-${{ env.VER }}-${{ github.run_number }}.armeabi-v7a.apk
+          body_path: notes.md
