@@ -31,6 +31,16 @@ android {
         versionName = flutter.versionName
     }
 
+    // (23-11-2026) as the ERP app: only the phones' processors are packed (no emulator parts); the release also makes one file per
+    // processor (FALCON_ABIS, the same version code) – a phone's update downloads only its own (lib/core/update.dart). The plugins'
+    // native parts are left out when packed (ndk.abiFilters left every processor in, the ERP app's build check showed).
+    val keepAbis = (System.getenv("FALCON_ABIS") ?: "armeabi-v7a,arm64-v8a").split(",").map { it.trim() }
+    packaging {
+        jniLibs {
+            excludes += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64").filter { it !in keepAbis }.map { "**/$it/**" }
+        }
+    }
+
     val ks = System.getenv("FALCON_KEYSTORE_PATH")
     signingConfigs {
         if (ks != null && file(ks).exists()) {

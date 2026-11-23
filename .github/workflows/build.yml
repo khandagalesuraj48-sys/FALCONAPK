@@ -113,7 +113,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-$BN.apk"
           for a in arm64-v8a:android-arm64 armeabi-v7a:android-arm; do
             abi=${a%%:*}; tp=${a##*:}
-            build --target-platform "$tp"
+            FALCON_ABIS=$abi build --target-platform "$tp"
             cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-$BN.$abi.apk"
             other=$(unzip -l "out/FALCON-$V-$BN.$abi.apk" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | grep -vx "$abi" || true)
             [ -z "$other" ] || { echo "::error::FALCON-$V-$BN.$abi.apk also has the parts of: $other"; exit 1; }
