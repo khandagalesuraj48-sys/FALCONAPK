@@ -108,14 +108,24 @@ class _LoadState<T> extends State<Load<T>> {
     if (widget.watch.isNotEmpty) {
       var ch = sb.channel('watch-${widget.watch.join('-')}-${identityHashCode(this)}');
       for (final t in widget.watch) {
-        ch = ch.onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: t, callback: (_) => _run(quiet: true));
+        ch = ch.onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: t, callback: (_) => _soon());
       }
       _ch = ch.subscribe();
     }
   }
 
+  // (23-11-2026, "falcon khup slow") many changes at once (a batch confirmed, the van's points) load the screen ONCE, not once each
+  Timer? _wait;
+  void _soon() {
+    _wait ??= Timer(const Duration(milliseconds: 700), () {
+      _wait = null;
+      if (mounted) _run(quiet: true);
+    });
+  }
+
   @override
   void dispose() {
+    _wait?.cancel();
     final ch = _ch;
     if (ch != null) unawaited(sb.removeChannel(ch));
     super.dispose();

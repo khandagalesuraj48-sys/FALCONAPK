@@ -793,8 +793,11 @@ Future<OrderData?> loadOrder(String id) async {
   final code = one(sb.from('delivery_codes').select('code,used_at').eq('order_id', id).limit(1));
   final mess = one(sb.from('messes').select('name').eq('id', '${o['mess_id']}').limit(1));
   final sec = o['to_section_id'] != null ? one(sb.from('sections').select('code,km,place').eq('id', '${o['to_section_id']}').limit(1)) : Future<Rec?>.value(null);
-  final conf = rows(sb.from('confirmations').select('order_line_id,kind,qty_received,at'));
-  return OrderData(o, await lines, await code, await mess, await sec, await conf);
+  // (23-11-2026, "falcon khup slow") only THIS order's confirmations – not every confirmation the person may read
+  final ls = await lines;
+  final ids = [for (final l in ls) '${l['id']}'];
+  final conf = ids.isEmpty ? <Rec>[] : await rows(sb.from('confirmations').select('order_line_id,kind,qty_received,at').inFilter('order_line_id', ids));
+  return OrderData(o, ls, await code, await mess, await sec, conf);
 }
 
 Future<Rec?> loadVan(String id) async {
