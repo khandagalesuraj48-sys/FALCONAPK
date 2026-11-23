@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../embed.dart';
 import 'look.dart';
 
 /// A phone screen: cream (or the dark navy of the driver's app), the top bar, the body that scrolls, an optional foot and tab bar.
@@ -34,6 +35,7 @@ class Screen extends StatelessWidget {
             style: T.body.copyWith(color: dark ? Colors.white : C.ink),
             child: Stack(children: [
               Column(children: [
+                if (_home(context)) LeaveLine(dark: dark),
                 ?top,
                 Expanded(child: body),
                 if (foot != null) foot!,
@@ -45,6 +47,16 @@ class Screen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// (23-11-2026) inside RCL's ERP / HR app: is this page a FALCON home (where "Back to RCL app" is shown)?
+bool _home(BuildContext context) {
+  if (!falconEmbedded || falconLeave == null) return false;
+  try {
+    return falconHomes.contains(GoRouterState.of(context).uri.path);
+  } catch (_) {
+    return false;
   }
 }
 
@@ -297,7 +309,8 @@ class Logo extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
         label: 'FALCON',
         image: true,
-        child: Image.asset('assets/brand/falcon-logo.png', width: size, height: size, filterQuality: FilterQuality.high),
+        child: Image.asset('assets/brand/falcon-logo.png', package: assetPackage, width: size, height: size, filterQuality: FilterQuality.high,
+            errorBuilder: (_, _, _) => SizedBox(width: size, height: size)),
       );
 }
 

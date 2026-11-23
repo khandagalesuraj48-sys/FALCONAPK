@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../embed.dart';
+
 class C {
   static const cream = Color(0xFFFAF8F2), paper = Color(0xFFFFFFFF), ink = Color(0xFF18221C), muted = Color(0xFF55625A);
   static const faint = Color(0xFF7C8780), line = Color(0xFFECE6D9), line2 = Color(0xFFE2DBCB);
@@ -18,7 +20,9 @@ class C {
   static const seg = Color(0xFFEFEADF), darkSub = Color(0xFFA9B6CC), heroSub = Color(0xFFB8C3D6);
 }
 
-const font = 'Schibsted';
+// (23-11-2026) one name for the family in the FALCON app and inside RCL's app: pubspec.yaml declares it under this name too
+// (inside another app Flutter names a package's font "packages/falcon/Schibsted" – so this one name works in both)
+const font = 'packages/falcon/Schibsted';
 
 /// The text styles of the designs (.h1, .h2, .lbl, .sm, .xs, .big).
 class T {
@@ -53,8 +57,9 @@ class Ico extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = color ?? DefaultTextStyle.of(context).style.color ?? C.ink;
-    return SvgPicture.asset('assets/icons/$name.svg', width: size, height: size,
-        colorFilter: ColorFilter.mode(c, BlendMode.srcIn), placeholderBuilder: (_) => SizedBox(width: size, height: size));
+    return SvgPicture.asset('assets/icons/$name.svg', package: assetPackage, width: size, height: size,
+        colorFilter: ColorFilter.mode(c, BlendMode.srcIn), placeholderBuilder: (_) => SizedBox(width: size, height: size),
+        errorBuilder: (_, _, _) => SizedBox(width: size, height: size));
   }
 }
 
