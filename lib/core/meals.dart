@@ -23,8 +23,18 @@ class Win {
   final int changeMinutes;
 }
 
-/// The messes this person may read; the one picked on this phone, else his site's, else the first.
-Future<List<Mess>> messes() async => (await rows(sb.from('messes').select('id,name,site_id,contractor_id,counters,lat,lng,radius_m').eq('active', true).order('name'))).map(Mess.new).toList();
+/// (23-11-2026, his words: "pratek gost edit delet fromdate") in use on a day: between its From (valid_from) and its Till (valid_to) –
+/// a mess, section or site removed in FALCON's web leaves the phone's lists from its date (the database's public.in_use).
+bool inUse(Rec r, [String? day]) {
+  final d = day ?? today(), f = r['valid_from'] as String?, t = r['valid_to'] as String?;
+  return r['active'] != false && (f == null || f.compareTo(d) <= 0) && (t == null || t.compareTo(d) >= 0);
+}
+
+/// The messes this person may read (in use today); the one picked on this phone, else his site's, else the first.
+Future<List<Mess>> messes() async => (await rows(sb.from('messes').select('id,name,site_id,contractor_id,counters,lat,lng,radius_m,active,valid_from,valid_to').eq('active', true).order('name')))
+    .where((r) => inUse(r))
+    .map(Mess.new)
+    .toList();
 
 Mess? myMess(List<Mess> list, String? homeSite) {
   final pick = Prefs.mess;
@@ -33,7 +43,7 @@ Mess? myMess(List<Mess> list, String? homeSite) {
 
 Future<List<Win>> windows(String? messId, String date) async {
   if (messId == null) return [];
-  return (await rows(sb.from('meal_windows').select('meal,serve_from,serve_to,order_by,change_minutes').eq('mess_id', messId)
+  return (await rows(sb.from('meal_windows').select('meal,serve_from,serve_to,order_by,change_minutes').eq('mess_id', messId).isFilter('removed_at', null)
           .lte('valid_from', date).or('valid_to.is.null,valid_to.gte.$date')))
       .map(Win.new)
       .toList();
@@ -63,7 +73,9 @@ Future<List<Rec>> items() => rows(sb.from('items').select('id,code,name,kind,mea
 
 Future<List<Rec>> sections(String? siteId) async {
   if (siteId == null) return [];
-  return rows(sb.from('sections').select('id,code,name,km,place,circle_id,lat,lng,circles(code,km_from,km_to)').eq('site_id', siteId).eq('active', true).order('km'));
+  return (await rows(sb.from('sections').select('id,code,name,km,place,circle_id,lat,lng,active,valid_from,valid_to,circles(code,km_from,km_to)').eq('site_id', siteId).eq('active', true).order('km')))
+      .where((r) => inUse(r))
+      .toList();
 }
 
 double? kmOf(Object? v) => v == null ? null : toD(v);
