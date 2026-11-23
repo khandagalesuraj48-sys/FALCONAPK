@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
 import 'config.dart';
 import 'core/prefs.dart';
 import 'core/session.dart';
+import 'core/update.dart';
 import 'routes.dart';
 import 'ui/look.dart';
 
@@ -31,6 +32,32 @@ class FalconApp extends StatefulWidget {
 
 class _FalconAppState extends State<FalconApp> {
   late final GoRouter router = buildRouter(widget.session);
+  AppLifecycleListener? _life;
+  @override
+  void initState() {
+    super.initState();
+    // (23-11-2026) the update from inside the app (core/update.dart): offered at every opening; its download goes on in the
+    // background; "Install?" over whatever screen is open
+    updateContext = () => router.routerDelegate.navigatorKey.currentContext;
+    _life = AppLifecycleListener(
+      onResume: () {
+        updateWatch(opened: true);
+        updateBack(offerNewest);
+      },
+      onPause: updateAway,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      updateWatch(opened: true);
+      offerNewest();
+    });
+  }
+
+  @override
+  void dispose() {
+    _life?.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return SessionScope(

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the update's file: inside the app (ota_update, the download in the app) or in its own Download folder (UpdateKit.kt) -->
+<paths>
+    <files-path name="internal_apk_storage" path="ota_update/"/>
+    <external-files-path name="falcon_update" path="Download/"/>
+</paths>

@@ -17,8 +17,13 @@ Read this first, then `README.md`. The same owner and rules as FALCON's web and 
    verified (a real phone, the live server).
 5. **Every command has a timeout.**
 6. **Fix a thing everywhere it is used** – the web (Wolf) and this app together.
-7. **The repository is PUBLIC:** no secret, key, password, keystore or personal data in any file. The signing key lives only in
-   GitHub secrets; the Supabase publishable key (public by design) in GitHub variables.
+7. **The repository is PUBLIC:** no secret, key, password, keystore or personal data in any file. The signing key (23-11-2026, his
+   answer: like the ERP's) is made once by the build and lives only in the private bucket `app-keys` of FALCON's Supabase – the build
+   reaches it with the GitHub secret `FALCON_SUPABASE_SECRET`, which is never built into the app; the Supabase publishable key (public
+   by design) in GitHub variables.
+9. **The update from inside the app** (23-11-2026, "same hr app erp app update kashi hote tas"): `lib/core/update.dart` +
+   `android/…/UpdateKit.kt` – offered at every opening, downloaded in the background, "Install?" over any screen; a release of `main`
+   only, signed with the permanent key. Work comes as a branch + pull request into `main` (made 23-11-2026, his yes).
 8. Work arrives as a branch + pull request; he merges.
 
 ## Name

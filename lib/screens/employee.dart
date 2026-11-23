@@ -18,6 +18,7 @@ import '../core/fmt.dart';
 import '../core/meals.dart';
 import '../core/prefs.dart';
 import '../core/session.dart';
+import '../core/update.dart';
 import '../ui/kit.dart';
 import '../ui/look.dart';
 import '../ui/road_map.dart';
@@ -1323,6 +1324,16 @@ class _MeState extends State<Me> {
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${n['title']}', style: T.b.copyWith(fontSize: 14)), if (n['body'] != null) Text('${n['body']}', style: T.xs)])),
                     Text(time(n['created_at'] as String?), style: T.xs),
                   ])),
+            // (23-11-2026) the version on this phone and "Check for update" (core/update.dart)
+            FutureBuilder<(String, int)>(
+              future: appVersion(),
+              builder: (context, v) => FCard(padding: const EdgeInsets.all(12), child: Row(children: [
+                const Tile('refresh-cw', tone: Tone.leaf, size: 40), const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('FALCON ${v.data?.$1 ?? ''}', style: T.b), Text(v.data == null ? ' ' : 'Build ${v.data!.$2}', style: T.xs)])),
+                Btn('Check for update', kind: BtnKind.ghost, small: true, onTap: () => checkNow(context)),
+              ])),
+            ),
             Btn('Sign out', icon: 'log-out', kind: BtnKind.ghost, onTap: () => s.signOut()),
           ],
         );

@@ -14,10 +14,17 @@ on FALCON's own database and server (the same rules as the web: `khandagalesuraj
 | Addresses and who may open what | `lib/routes.dart` |
 
 ## The APK
-GitHub → Actions → "build": every push builds `FALCON-<version>-<build>.apk` (the run's "Artifacts"); a push to `main` also puts it
-up as the latest Release. Settings: GitHub → Settings → Secrets and variables → Actions → **Variables** `FALCON_SUPABASE_URL`,
-`FALCON_SUPABASE_KEY` (publishable), `FALCON_SERVER`; optional **Secrets** for Sketchline's signing key
-(`FALCON_KEYSTORE_B64`, `FALCON_KEYSTORE_PASSWORD`, `FALCON_KEY_ALIAS`, `FALCON_KEY_PASSWORD`).
+GitHub → Actions → "build": every push builds `FALCON-<version>-<build>.apk` and one file per processor (`.arm64-v8a.apk`,
+`.armeabi-v7a.apk` – the same build number); a branch's push is a TEST build (a pre-release); a merge into `main` is the latest
+Release – only when signed with FALCON's permanent key. Settings: GitHub → Settings → Secrets and variables → Actions →
+**Variables** `FALCON_SUPABASE_URL`, `FALCON_SUPABASE_KEY` (publishable), `FALCON_SERVER`; **Secret** `FALCON_SUPABASE_SECRET` (a
+secret key of FALCON's Supabase – used only by the build to keep the signing key in the private bucket `app-keys`, made once).
+
+## The update from inside the app (23-11-2026 – like the ERP app)
+At every opening the app looks at the latest Release (`lib/core/update.dart`): "Update to …?" (Update / Close, what is new shown);
+Update – Android's Download Manager downloads this phone's own file in the background (`android/…/UpdateKit.kt`), the fingerprint
+is checked, "Install?" comes over any screen (or the notification "Update ready"). Me → version and "Check for update". A phone
+with a test build of before (the debug key) uninstalls it once and installs the first release signed with the permanent key.
 
 ## Checks (each with a time limit)
 ```

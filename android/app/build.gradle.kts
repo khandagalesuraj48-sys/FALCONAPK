@@ -1,6 +1,7 @@
-// FALCON (si.sketchline.falcon). The release is signed with Sketchline's own key when the build is given it (GitHub secrets →
-// FALCON_KEYSTORE_PATH and the passwords, in .github/workflows/build.yml); without it the file is signed with the debug key – it
-// installs, but a later file signed with another key does not update it. No key is ever in this repository.
+// FALCON (si.sketchline.falcon). The release is signed with FALCON's permanent key (23-11-2026, his answer: kept like the ERP's –
+// made once by the build and kept only in the private bucket "app-keys" of FALCON's Supabase; .github/workflows/build.yml gives it
+// as FALCON_KEYSTORE_PATH and the passwords); without it the file is signed with the debug key – it installs, but a later file signed
+// with another key does not update it. No key is ever in this repository.
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -56,4 +57,8 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("androidx.core:core:1.16.0")   // (23-11-2026) FileProvider – the update's file handed to Android's installer (UpdateKit.kt)
 }

@@ -21,6 +21,8 @@ dependencies:
   path_provider: ^2.1.6
   geolocator: ^14.1.0           # the van's place – only while it is on the way
   url_launcher: ^6.3.0          # call the driver / the person
+  package_info_plus: ^10.2.2
+  ota_update: ^7.1.0
 
 dev_dependencies:
   flutter_test:
