@@ -32,5 +32,6 @@ Read this first, then `README.md`. The same owner and rules as FALCON's web and 
 
 ## How it is built
 * No server of its own: FALCON's Supabase (sign-in by a WhatsApp code, the database's own rules) and FALCON's server steps
-  (`/api/start`, `/api/register`, `/api/welcome`, `/api/device`, `/api/guest-pass`, `/api/lookup` on FALCON's web address).
+  (`/api/start`, `/api/register`, `/api/welcome`, `/api/device`, `/api/guest-pass`, `/api/lookup`, `/api/hr` – opened from HR, 23-11-2026 – on
+  FALCON's web address). Google Map: the ERP's key, the GitHub secret `MAPS_API_KEY` (23-11-2026, his answer "erp chi key use kru").
 * `.github/workflows/build.yml` checks and builds the APK on every push; on `main` it is put up as a GitHub Release.

@@ -13,6 +13,7 @@ import '../core/session.dart';
 import '../ui/kit.dart';
 import '../ui/look.dart';
 import '../ui/road_map.dart';
+import '../ui/gmap.dart';
 
 const driverTabs = [TabItem('/driver', 'house', 'Home'), TabItem('/driver/trip', 'route', 'Trip'), TabItem('/driver/vehicle', 'truck', 'Vehicle')];
 PillTabs _tabs(String current) => PillTabs(tabs: driverTabs, current: current, dark: true);
@@ -314,8 +315,12 @@ class _RouteNextState extends State<RouteNext> with Act {
           dark: true,
           top: const Top(dark: true, title: 'Route', back: '/driver/trip'),
           children: [
-            ClipRRect(borderRadius: BorderRadius.circular(20), child: RoadMap(dark: true, sections: [for (final y in stops) MapSection('${y['section_id']}', '${y['section']}', y['km'] == null ? null : toD(y['km']))],
-                mine: widget.section, done: [for (final y in stops) if (y['reached_at'] != null) '${y['section_id']}'], height: 320, label: 'The trip\'s stops on the road')),
+            // (23-11-2026, picture N4) the Google map: the trip's stops with a place, the van (this phone), the line through the stops left
+            ClipRRect(borderRadius: BorderRadius.circular(20), child: GMap(dark: true, height: 320, me: 'van', label: 'Map: your van and the trip\'s stops',
+                marks: [for (final y in stops) if (y['lat'] != null && y['lng'] != null) Mark(toD(y['lat']), toD(y['lng']), y['section_id'] == widget.section ? 'mine' : y['reached_at'] != null ? 'done' : 'stop', label: '${y['seq']}', title: '${y['section']}')],
+                line: [for (final y in stops) if (y['reached_at'] == null && y['lat'] != null && y['lng'] != null) (toD(y['lat']), toD(y['lng']))],
+                fallback: RoadMap(dark: true, sections: [for (final y in stops) MapSection('${y['section_id']}', '${y['section']}', y['km'] == null ? null : toD(y['km']))],
+                    mine: widget.section, done: [for (final y in stops) if (y['reached_at'] != null) '${y['section_id']}'], height: 320, label: 'The trip\'s stops on the road'))),
             FCard(dark: true, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
                 Container(width: 40, height: 40, alignment: Alignment.center, decoration: const BoxDecoration(color: C.gold, shape: BoxShape.circle), child: Text('${stop['seq']}', style: T.b.copyWith(color: const Color(0xFF1D1404)))),
@@ -329,7 +334,7 @@ class _RouteNextState extends State<RouteNext> with Act {
               const SizedBox(height: 8),
               ErrorLine(error, dark: true),
               Row(children: [
-                Expanded(child: Btn('Google Maps', icon: 'navigation', kind: BtnKind.ghost, dark: true, onTap: () => launchUrl(Uri.parse(gmaps), mode: LaunchMode.externalApplication))),
+                Expanded(child: Btn('Open in Google Maps', icon: 'navigation', kind: BtnKind.ghost, dark: true, onTap: () => launchUrl(Uri.parse(gmaps), mode: LaunchMode.externalApplication))),
                 const SizedBox(width: 10),
                 Expanded(child: Btn('I\'m here', kind: BtnKind.gold, busy: busy, onTap: () => act(() async {
                   await call('reach_stop', {'p_batch': tr['id'], 'p_section': stop['section_id']});

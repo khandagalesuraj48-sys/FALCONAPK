@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
 
 import 'config.dart';
+import 'core/clock.dart';
 import 'core/prefs.dart';
 import 'core/session.dart';
 import 'core/update.dart';
@@ -19,6 +20,7 @@ Future<void> main() async {
     await Supabase.initialize(url: Config.supabaseUrl, anonKey: Config.supabaseKey);
   }
   await Prefs.init();
+  keepClock(); // (23-11-2026) the server's clock – the meal of now follows it, not the phone's
   final session = Session()..start();
   runApp(FalconApp(session: session));
 }

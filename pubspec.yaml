@@ -20,6 +20,7 @@ dependencies:
   record: ^7.2.0                # a complaint's voice
   path_provider: ^2.1.6
   geolocator: ^14.1.0           # the van's place – only while it is on the way
+  google_maps_flutter: ^2.9.0   # (23-11-2026) the Google map – the ERP's key at the build (MAPS_API_KEY); without it the drawn road
   url_launcher: ^6.3.0          # call the driver / the person
   package_info_plus: ^10.2.2
   ota_update: ^7.1.0

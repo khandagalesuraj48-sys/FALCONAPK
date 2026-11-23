@@ -6,8 +6,16 @@ const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 
 const _monthsLong = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+/// (23-11-2026, his word: "day night auto select asel server time asel") the SERVER's clock, not the phone's: the difference is
+/// taken from FALCON's server (GET /api/start – core/clock.dart) and every "now" below follows it.
+int skewMs = 0;
+void setSkew(int serverMs, int sentAt, int gotAt) {
+  if (gotAt < sentAt) return;
+  skewMs = serverMs + ((gotAt - sentAt) ~/ 2) - gotAt;
+}
+
 /// Now on the site's clock (a DateTime whose fields are India's time).
-DateTime istNow() => DateTime.now().toUtc().add(_ist);
+DateTime istNow() => DateTime.now().add(Duration(milliseconds: skewMs)).toUtc().add(_ist);
 
 /// A moment from the database (ISO, with its offset) on the site's clock.
 DateTime? ist(String? ts) {

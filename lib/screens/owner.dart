@@ -15,6 +15,7 @@ import '../core/session.dart';
 import '../ui/kit.dart';
 import '../ui/look.dart';
 import '../ui/road_map.dart';
+import '../ui/gmap.dart';
 import 'employee.dart' show foot;
 
 const ownerTabs = [
@@ -35,12 +36,14 @@ class OwnerMess {
   String get id => '${mess?['id']}';
   String get name => '${mess?['name'] ?? ''}';
   String get contractor => '${(mess?['contractors'] as Map?)?['name'] ?? mess?['name'] ?? ''}';
+  double? get lat => mess?['lat'] == null ? null : toD(mess!['lat']);
+  double? get lng => mess?['lng'] == null ? null : toD(mess!['lng']);
 }
 
 Future<OwnerMess> ownerMess(Session s) async {
   final g = s.grants.where((x) => (x.role == 'mess_owner' || x.role == 'mess_operator') && x.messId != null).firstOrNull;
   if (g == null) return OwnerMess(null, false);
-  return OwnerMess(await one(sb.from('messes').select('id,name,site_id,contractor_id,contractors(name)').eq('id', g.messId!).limit(1)), g.role == 'mess_owner');
+  return OwnerMess(await one(sb.from('messes').select('id,name,site_id,contractor_id,lat,lng,contractors(name)').eq('id', g.messId!).limit(1)), g.role == 'mess_owner');
 }
 
 Future<List<Rec>> kitchen(String messId, [String? date]) async => _list(await call<dynamic>('kitchen_orders', {'p_mess': messId, 'p_date': date ?? today()}));
@@ -438,7 +441,7 @@ class _ParcelsState extends State<Parcels> with Act {
 Future<Rec?> loadBatch(String id) async {
   final b = await one(sb.from('batches').select().eq('id', id).limit(1));
   if (b == null) return null;
-  final stops = await rows(sb.from('batch_stops').select('id,seq,section_id,eta,reached_at,sections(code,km,place)').eq('batch_id', id).order('seq'));
+  final stops = await rows(sb.from('batch_stops').select('id,seq,section_id,eta,reached_at,sections(code,km,place,lat,lng)').eq('batch_id', id).order('seq'));
   final orders = await rows(sb.from('batch_orders').select('order_id,orders(to_section_id,code)').eq('batch_id', id).isFilter('removed_at', null));
   Rec? driver;
   if (b['driver_id'] != null) {
@@ -545,8 +548,13 @@ class _BatchRouteState extends State<BatchRoute> with Act {
               Expanded(flex: 2, child: Btn('Next: dispatch', kind: BtnKind.navy, busy: busy, onTap: list.isEmpty ? null : save)),
             ], gap: 10)]),
             children: [
-              ClipRRect(borderRadius: BorderRadius.circular(20), child: RoadMap(sections: [for (final p in list) MapSection('${p['section_id']}', '${(p['sections'] as Map?)?['code']}', (p['sections'] as Map?)?['km'] == null ? null : toD((p['sections'] as Map)['km']))],
-                  height: 220, label: 'The stops of the batch on the road')),
+              ClipRRect(borderRadius: BorderRadius.circular(20), child: Builder(builder: (_) {
+                // (23-11-2026) the Google map when the sections have their places; the drawn road otherwise
+                final marks = [for (final (i, p) in list.indexed) if ((p['sections'] as Map?)?['lat'] != null && (p['sections'] as Map?)?['lng'] != null)
+                  Mark(toD((p['sections'] as Map)['lat']), toD((p['sections'] as Map)['lng']), 'stop', label: '${i + 1}', title: '${(p['sections'] as Map)['code']}')];
+                return GMap(height: 220, label: 'Map: the stops of the batch', marks: marks, line: [for (final m in marks) (m.lat, m.lng)], fallback: RoadMap(sections: [for (final p in list) MapSection('${p['section_id']}', '${(p['sections'] as Map?)?['code']}', (p['sections'] as Map?)?['km'] == null ? null : toD((p['sections'] as Map)['km']))],
+                  height: 220, label: 'The stops of the batch on the road'));
+              })),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$mins min', style: T.big.copyWith(fontSize: 28)),
                 Text('${(km * 10).round() / 10} km by chainage · estimated at ${speed.round()} km/h, ${stopMin.round()} min a stop', style: T.xs)]),
               FCard(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4), child: Column(children: [
@@ -648,18 +656,38 @@ class _SlideToGoState extends State<_SlideToGo> {
 class Live extends StatelessWidget {
   const Live({super.key});
   @override
-  Widget build(BuildContext context) => _WithMess<(List<Rec>, List<Rec>)>(
-        watch: const ['batches', 'batch_stops', 'order_lines'],
+  Widget build(BuildContext context) => _WithMess<(List<Rec>, List<Rec>, List<Rec>)>(
+        watch: const ['batches', 'batch_stops', 'order_lines', 'track_points'],
         title: 'Live',
-        load: (m) async => (await rows(sb.from('batches').select('*,batch_stops(seq,reached_at)').eq('mess_id', m.id).eq('service_date', today()).neq('state', 'cancelled').order('code')), await kitchen(m.id)),
+        load: (m) async {
+          final b = await rows(sb.from('batches').select('*,batch_stops(seq,reached_at,sections(code,lat,lng))').eq('mess_id', m.id).eq('service_date', today()).neq('state', 'cancelled').order('code'));
+          // (23-11-2026, picture N5) each van on the road where its driver's phone last said
+          final road = [for (final x in b) if (x['state'] == 'on_the_way') '${x['id']}'];
+          final pts = road.isEmpty ? <Rec>[] : await rows(sb.from('track_points').select('batch_id,lat,lng,at').inFilter('batch_id', road).order('at', ascending: false).limit(200));
+          return (b, await kitchen(m.id), pts);
+        },
         builder: (context, m, x, reload) {
-          final (batches, k) = x;
+          final (batches, k, pts) = x;
           final onRoad = batches.where((b) => b['state'] == 'on_the_way').length;
           final short = [for (final o in k) for (final l in linesOf(o).where((l) => l['state'] == 'short')) (o, l)];
           return Screen(
             top: Top(title: 'Live · today', sub: '$onRoad vans on the road', right: Chip2('New batch', onTap: () => context.push('/owner/parcels'))),
             tabs: _tabs('/owner/live'),
             children: [
+              Builder(builder: (_) {
+                final marks = <Mark>[];
+                for (final b in batches.where((b) => b['state'] == 'on_the_way')) {
+                  for (final y in _list(b['batch_stops'])) {
+                    final sc = y['sections'];
+                    if (y['reached_at'] == null && sc is Map && sc['lat'] != null && sc['lng'] != null) marks.add(Mark(toD(sc['lat']), toD(sc['lng']), 'stop', label: '${sc['code']}', title: '${b['code']} · ${sc['code']}'));
+                  }
+                  final last = pts.where((p) => p['batch_id'] == b['id']).firstOrNull;
+                  if (last != null) marks.add(Mark(toD(last['lat']), toD(last['lng']), 'van', label: '${b['code']}', title: '${b['code']}'));
+                }
+                if (marks.isEmpty || !mapsOn) return const SizedBox.shrink();
+                if (m.lat != null && m.lng != null) marks.insert(0, Mark(m.lat!, m.lng!, 'mess', title: m.name));
+                return ClipRRect(borderRadius: BorderRadius.circular(20), child: GMap(height: 260, label: 'Map: the vans on the road', marks: marks, fallback: const SizedBox.shrink()));
+              }),
               if (batches.isEmpty) const Empty(icon: 'truck', title: 'No batches today'),
               for (final b in batches)
                 Builder(builder: (_) {
