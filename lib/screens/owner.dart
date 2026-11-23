@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/db.dart';
 import '../core/fmt.dart';
+import '../core/geo.dart';
 import '../core/meals.dart';
 import '../core/session.dart';
 import '../ui/kit.dart';
@@ -27,6 +28,16 @@ PillTabs _tabs(String current) => PillTabs(tabs: ownerTabs, current: current);
 List<Rec> _list(Object? v) => [for (final x in (v as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
 List<Rec> linesOf(Rec o) => _list(o['lines']);
 Rec? secOf(Rec o) => o['section'] is Map ? Map<String, dynamic>.from(o['section'] as Map) : null;
+// (Wolf 0017, his word: "only section … section che baheun koni kel asel tr … location direction he sagle hot jail") a van order goes
+// to a section or – asked from outside every section – to the person's location: how far it is from the mess and Google's directions.
+Rec? pointOf(Rec o) => o['point'] is Map ? Map<String, dynamic>.from(o['point'] as Map) : null;
+String? whereOf(Rec o) => secOf(o)?['code'] as String? ?? (pointOf(o) != null ? 'Location' : null);
+String? farOf(Rec o, OwnerMess m) {
+  final p = pointOf(o);
+  return p == null || m.lat == null || m.lng == null ? null : distText(metres(m.lat!, m.lng!, toD(p['lat']), toD(p['lng'])));
+}
+Widget directions(double lat, double lng, {String label = 'Directions'}) =>
+    Chip2(label, icon: 'navigation', height: 28, onTap: () => launchUrl(directionsUrl(lat, lng), mode: LaunchMode.externalApplication));
 
 /// The mess of this owner / operator (his grant names it).
 class OwnerMess {
@@ -171,7 +182,7 @@ class Requests extends StatefulWidget {
 }
 
 class _RequestsState extends State<Requests> with Act {
-  String by = 'circle';
+  String by = 'section';
   @override
   Widget build(BuildContext context) => _WithMess<(List<Win>, List<Rec>)>(
         watch: const ['orders', 'order_lines'],
@@ -184,8 +195,7 @@ class _RequestsState extends State<Requests> with Act {
           String key(Rec o) {
             final sec = secOf(o);
             return switch (by) {
-              'circle' => sec != null ? 'Circle ${sec['circle']}' : o['kind'] == 'meal' ? 'At the mess' : 'Collect at the mess',
-              'section' => '${sec?['code'] ?? 'At the mess'}',
+              'section' => sec != null ? 'Section ${sec['code']}' : pointOf(o) != null ? 'Outside the sections' : o['kind'] == 'meal' ? 'At the mess' : 'Collect at the mess',
               'person' => '${o['requester']}',
               _ => '${o['code']}',
             };
@@ -200,7 +210,7 @@ class _RequestsState extends State<Requests> with Act {
               Expanded(flex: 2, child: Btn('Accept ${ready.length} ready', icon: 'lock', kind: BtnKind.leaf, busy: busy, onTap: ready.isEmpty ? null : acceptAll)),
             ], gap: 10), const SizedBox(height: 76)]),
             children: [
-              Seg(items: const [('circle', 'Circle'), ('section', 'Section'), ('person', 'Person'), ('order', 'Order')], value: by, onChanged: (v) => setState(() => by = v)),
+              Seg(items: const [('section', 'Section'), ('person', 'Person'), ('order', 'Order')], value: by, onChanged: (v) => setState(() => by = v)),
               if (waiting.isEmpty) const Empty(icon: 'receipt', title: 'No new requests', text: 'New ones come here as they are asked.'),
               for (final g in groups) ...[
                 Builder(builder: (_) {
@@ -215,7 +225,7 @@ class _RequestsState extends State<Requests> with Act {
                         Av(initials('${o['requester']}'), tone: guest ? Tone.plum : Tone.leaf),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Wrap2([Text('${o['requester']}', style: T.b), if (guest) const Tag('Guest'), if (o['is_group'] == true) Tag('Group · ${linesOf(o).where((l) => l['is_meal'] == true).length}')], gap: 6),
-                          Text('${o['requester_role'] ?? ''}${sec != null ? ' · ${sec['code']}${sec['km'] != null ? ' Km ${sec['km']}' : ''}' : ''}', style: T.xs),
+                          Text('${o['requester_role'] ?? ''}${sec != null ? ' · ${sec['code']}${sec['km'] != null ? ' Km ${sec['km']}' : ''}' : pointOf(o) != null ? ' · Location${farOf(o, m) != null ? ', ${farOf(o, m)} from the mess' : ''}' : ''}', style: T.xs),
                         ])),
                         Chip2(open ? leftText('${o['change_until']}') : 'Ready', icon: open ? 'timer' : null, tone: open ? Tone.amber : Tone.plain, height: 26),
                       ], gap: 12)),
@@ -283,7 +293,9 @@ class _RequestDetailState extends State<RequestDetail> with Act {
                 for (final l in linesOf(o)) _row([Expanded(child: Text('${l['item']}${o['is_group'] == true ? ' · ${l['person']}' : ''}',
                     style: T.body.copyWith(decoration: l['state'] == 'cancelled' ? TextDecoration.lineThrough : null, color: l['state'] == 'cancelled' ? C.muted : C.ink))), Text('${l['qty']}', style: T.b)]),
                 const Hr(),
-                _row([const Ico('map-pin', size: 16, color: C.muted), Expanded(child: Text(sec != null ? '${sec['code']}${sec['place'] != null ? ' ${sec['place']}' : ''} · with the van' : o['kind'] == 'parcel' ? 'Collected at the mess' : 'At the mess', style: T.sm))]),
+                _row([Ico(pointOf(o) != null ? 'locate-fixed' : 'map-pin', size: 16, color: C.muted), Expanded(child: Text(sec != null ? '${sec['code']}${sec['place'] != null ? ' ${sec['place']}' : ''} · with the van'
+                    : pointOf(o) != null ? 'His location – outside the sections${farOf(o, m) != null ? ' · ${farOf(o, m)} from the mess' : ''} · with the van' : o['kind'] == 'parcel' ? 'Collected at the mess' : 'At the mess', style: T.sm)),
+                  if (pointOf(o) != null) directions(toD(pointOf(o)!['lat']), toD(pointOf(o)!['lng']))]),
                 if (o['note'] != null) _row([const Ico('message-circle', size: 16, color: C.muted), Expanded(child: Text('${o['note']}', style: T.sm))]),
               ])),
               ErrorLine(error),
@@ -317,7 +329,7 @@ class _KitchenState extends State<Kitchen> with Act {
           for (final o in prep) { for (final l in linesOf(o).where((l) => l['state'] != 'cancelled')) { tot['${l['item']}'] = (tot['${l['item']}'] ?? 0) + toI(l['qty']); } }
           final bySec = <String, (int, int, Object?)>{};
           for (final o in [...prep, ...ready]) {
-            final kk = '${secOf(o)?['code'] ?? 'Collect'}';
+            final kk = whereOf(o) ?? 'Collect';
             final v = bySec[kk] ?? (0, 0, secOf(o)?['km']);
             bySec[kk] = (v.$1 + (o['state'] == 'ready' ? 1 : 0), v.$2 + 1, v.$3);
           }
@@ -348,7 +360,7 @@ class _KitchenState extends State<Kitchen> with Act {
                 for (final o in prep)
                   FCard(padding: const EdgeInsets.all(12), onTap: () => setState(() => sel['${o['id']}'] = !(sel['${o['id']}'] ?? false)), child: _row([
                     _tick(sel['${o['id']}'] == true),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${o['code']} · ${o['requester']}', style: T.b.copyWith(fontSize: 14)), Text('${secOf(o)?['code'] ?? 'collect'} · ${itemsText(o)}', style: T.xs)])),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${o['code']} · ${o['requester']}', style: T.b.copyWith(fontSize: 14)), Text('${whereOf(o) ?? 'collect'} · ${itemsText(o)}', style: T.xs)])),
                     Text(time(o['accepted_at'] as String?), style: T.xs),
                   ], gap: 12)),
               ],
@@ -357,7 +369,7 @@ class _KitchenState extends State<Kitchen> with Act {
                 for (final o in ready)
                   FCard(padding: const EdgeInsets.all(12), child: _row([_tick(true),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${o['code']} · ${o['requester']}', style: T.b.copyWith(fontSize: 14)),
-                      Text('${secOf(o)?['code'] ?? 'collect at the mess'} · ${itemsText(o)}${o['batch'] != null ? ' · ${o['batch']}' : ''}', style: T.xs)])),
+                      Text('${whereOf(o) ?? 'collect at the mess'} · ${itemsText(o)}${o['batch'] != null ? ' · ${o['batch']}' : ''}', style: T.xs)])),
                     Text(time(o['ready_at'] as String?), style: T.xs)], gap: 12)),
               ],
               if (tab == 'counter') ...[
@@ -394,42 +406,50 @@ class _ParcelsState extends State<Parcels> with Act {
         load: (m) => kitchen(m.id),
         builder: (context, m, k, reload) {
           final ready = k.where((o) => o['kind'] == 'delivery' && ['accepted', 'preparing', 'ready'].contains(o['state']) && o['batch'] == null).toList();
-          final circles = ready.map((o) => '${secOf(o)?['circle'] ?? '–'}').toSet().toList()..sort();
-          final take = ready.where((o) => left['${secOf(o)?['id'] ?? ''}'] != true).toList();
-          final stops = take.map((o) => secOf(o)?['code']).toSet();
+          String stopOf(Rec o) => '${secOf(o)?['id'] ?? 'p-${o['id']}'}';
+          final take = ready.where((o) => left[stopOf(o)] != true).toList();
+          final stops = take.map(stopOf).toSet();
           final meal = take.firstOrNull?['meal'];
           Future<void> make() => act(() async {
                 final same = take.where((o) => o['meal'] == meal).toList();
                 final id = await call<dynamic>('make_batch', {'p_mess': m.id, 'p_date': today(), 'p_meal': meal, 'p_orders': [for (final o in same) o['id']]});
                 if (context.mounted) context.go('/owner/batches/$id/driver');
               });
+          final secs = <String, Rec>{for (final o in ready) if (secOf(o) != null) '${secOf(o)!['id']}': secOf(o)!}.values.toList()
+            ..sort((a, b) { final c = toD(a['km'] ?? 0).compareTo(toD(b['km'] ?? 0)); return c != 0 ? c : '${a['code']}'.compareTo('${b['code']}'); });
+          final pts = ready.where((o) => secOf(o) == null && pointOf(o) != null).toList();
+          Widget row(String key, int i, int n, Widget body, Widget count) => InkWell(onTap: () => setState(() => left[key] = !(left[key] ?? false)), child: Opacity(opacity: left[key] == true ? .45 : 1, child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(border: i < n - 1 ? const Border(bottom: BorderSide(color: C.line)) : null),
+                child: _row([Expanded(child: body), count]))));
+          Widget head(int ci, String icon, String title, int n) => Container(color: _bg[ci], padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: _row([
+                Container(width: 24, height: 24, decoration: BoxDecoration(color: _dot[ci], borderRadius: BorderRadius.circular(7)), child: Center(child: Ico(icon, size: 14, color: Colors.white))),
+                Expanded(child: Text(title, style: T.b)), Text('$n', style: T.b)], gap: 10));
           return Screen(
-            top: Top(title: 'Parcels for the van · ${ready.length}', sub: 'Grouped by circle and section', back: '/owner/kitchen'),
+            top: Top(title: 'Parcels for the van · ${ready.length}', sub: 'By section – and the locations outside the sections', back: '/owner/kitchen'),
             foot: foot([
               _row([Expanded(child: Text('${stops.length} stops', style: T.sm)), Text('${take.length} parcels', style: T.b)]),
               Btn('Make a delivery batch', icon: 'layers', kind: BtnKind.navy, busy: busy, onTap: take.isEmpty ? null : make),
             ]),
             children: [
               if (ready.isEmpty) const Empty(icon: 'package', title: 'No parcels waiting for a van'),
-              for (final (ci, c) in circles.indexed)
-                Builder(builder: (_) {
-                  final inC = ready.where((o) => '${secOf(o)?['circle'] ?? '–'}' == c).toList();
-                  final secs = <String, Rec>{for (final o in inC) if (secOf(o) != null) '${secOf(o)!['id']}': secOf(o)!}.values.toList()
-                    ..sort((a, b) => toD(a['km']).compareTo(toD(b['km'])));
-                  return FCard(padding: EdgeInsets.zero, child: Column(children: [
-                    Container(color: _bg[ci % 4], padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: _row([
-                      Container(width: 24, height: 24, decoration: BoxDecoration(color: _dot[ci % 4], borderRadius: BorderRadius.circular(7)), child: const Center(child: Ico('check', size: 14, color: Colors.white))),
-                      Expanded(child: Text('Circle $c', style: T.b)), Text('${inC.length}', style: T.b)], gap: 10)),
-                    for (final (i, sec) in secs.indexed)
-                      InkWell(onTap: () => setState(() => left['${sec['id']}'] = !(left['${sec['id']}'] ?? false)), child: Opacity(opacity: left['${sec['id']}'] == true ? .45 : 1, child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(border: i < secs.length - 1 ? const Border(bottom: BorderSide(color: C.line)) : null),
-                        child: _row([Expanded(child: Text('${sec['code']}${sec['km'] != null ? ' · Km ${sec['km']}' : ''}${sec['place'] != null ? ' · ${sec['place']}' : ''}${left['${sec['id']}'] == true ? ' · next van' : ''}', style: T.sm)),
-                          Text('${ready.where((o) => secOf(o)?['id'] == sec['id']).length}', style: T.b)]),
-                      ))),
-                  ]));
-                }),
-              const InfoLine('Tap a section to leave it for the next van.'),
+              if (secs.isNotEmpty)
+                FCard(padding: EdgeInsets.zero, child: Column(children: [
+                  head(0, 'map-pin', 'Sections', ready.where((o) => secOf(o) != null).length),
+                  for (final (i, sec) in secs.indexed)
+                    row('${sec['id']}', i, secs.length,
+                        Text('${sec['code']}${sec['name'] != null && sec['name'] != sec['code'] ? ' – ${sec['name']}' : ''}${sec['km'] != null ? ' · Km ${sec['km']}' : ''}${sec['place'] != null ? ' · ${sec['place']}' : ''}${left['${sec['id']}'] == true ? ' · next van' : ''}', style: T.sm),
+                        Text('${ready.where((o) => secOf(o)?['id'] == sec['id']).length}', style: T.b)),
+                ])),
+              if (pts.isNotEmpty)
+                FCard(padding: EdgeInsets.zero, child: Column(children: [
+                  head(1, 'locate-fixed', 'Outside the sections · their locations', pts.length),
+                  for (final (i, o) in pts.indexed)
+                    row('p-${o['id']}', i, pts.length,
+                        Text('${o['requester']}${farOf(o, m) != null ? ' · ${farOf(o, m)} from the mess' : ''} · ${o['code']}${left['p-${o['id']}'] == true ? ' · next van' : ''}', style: T.sm),
+                        directions(toD(pointOf(o)!['lat']), toD(pointOf(o)!['lng']))),
+                ])),
+              const InfoLine('Tap a section or a location to leave it for the next van. The stops go nearest to the mess first – you can change the order on the route.'),
               ErrorLine(error),
             ],
           );
@@ -437,11 +457,20 @@ class _ParcelsState extends State<Parcels> with Act {
       );
 }
 
+String _stopKey(Rec s) => '${s['section_id'] ?? 'p-${s['order_id']}'}';
+String _stopName(Rec s) => s['sections'] is Map ? '${(s['sections'] as Map)['code']}' : 'Location · ${(s['orders'] as Map?)?['code'] ?? ''}';
+(double, double)? _stopAt(Rec s) {
+  final x = s['sections'] is Map ? s['sections'] as Map : null, o = s['orders'] is Map ? s['orders'] as Map : null;
+  if (x != null) return x['lat'] != null && x['lng'] != null ? (toD(x['lat']), toD(x['lng'])) : null;
+  return o != null && o['to_lat'] != null && o['to_lng'] != null ? (toD(o['to_lat']), toD(o['to_lng'])) : null;
+}
+
 /// A batch with its stops, orders, driver and vehicle (the web's useBatch).
 Future<Rec?> loadBatch(String id) async {
   final b = await one(sb.from('batches').select().eq('id', id).limit(1));
   if (b == null) return null;
-  final stops = await rows(sb.from('batch_stops').select('id,seq,section_id,eta,reached_at,sections(code,km,place,lat,lng)').eq('batch_id', id).order('seq'));
+  // (Wolf 0017) a stop is a section, or one order's location outside the sections (order_id)
+  final stops = await rows(sb.from('batch_stops').select('id,seq,section_id,order_id,eta,reached_at,sections(code,km,place,lat,lng),orders(code,to_lat,to_lng)').eq('batch_id', id).order('seq'));
   final orders = await rows(sb.from('batch_orders').select('order_id,orders(to_section_id,code)').eq('batch_id', id).isFilter('removed_at', null));
   Rec? driver;
   if (b['driver_id'] != null) {
@@ -511,38 +540,48 @@ class BatchRoute extends StatefulWidget {
 class _BatchRouteState extends State<BatchRoute> with Act {
   List<String>? order;
   @override
-  Widget build(BuildContext context) => Load<(Rec?, Map<String, Object?>)>(
+  Widget build(BuildContext context) => Load<(Rec?, Map<String, Object?>, OwnerMess)>(
         watch: const ['batches', 'batch_stops'],
         loading: const Screen(top: Top(title: 'Route', back: ''), children: [Loading()]),
         load: () async {
           final d = today();
+          final om = await ownerMess(SessionScope.of(context));
           final set = await rows(sb.from('settings').select('key,value').isFilter('site_id', null).inFilter('key', ['delivery.speed_kmh', 'delivery.stop_minutes'])
               .lte('valid_from', d).or('valid_to.is.null,valid_to.gte.$d'));
-          return (await loadBatch(widget.id), {for (final r in set) '${r['key']}': r['value']});
+          return (await loadBatch(widget.id), {for (final r in set) '${r['key']}': r['value']}, om);
         },
         builder: (context, x, reload) {
-          final (bt, set) = x;
+          final (bt, set, om) = x;
           final stops = _list(bt?['stops']), orders = _list(bt?['orders']);
-          final seq = order ?? [for (final s in stops) '${s['section_id']}'];
-          final list = [for (final sid in seq) ...stops.where((s) => s['section_id'] == sid)];
+          final seq = order ?? [for (final s in stops) _stopKey(s)];
+          final list = [for (final sid in seq) ...stops.where((s) => _stopKey(s) == sid)];
           double num(String k, double def) { final v = double.tryParse('${set[k] ?? ''}'); return set[k] != null && v != null ? v : def; }
           final speed = num('delivery.speed_kmh', 30).clamp(5, 1000).toDouble(), stopMin = num('delivery.stop_minutes', 4).clamp(0, 1000).toDouble();
+          // (Wolf 0017) every stop has its place and so has the mess: the km in straight lines from the mess, stop to stop; else by chainage
+          final byPlace = om.lat != null && om.lng != null && list.isNotEmpty && list.every((s) => _stopAt(s) != null);
           var km = 0.0, prev = 0.0;
+          var at = (om.lat ?? 0.0, om.lng ?? 0.0);
           final start = DateTime.now();
           final plan = <(Rec, DateTime)>[];
           for (final (i, s) in list.indexed) {
-            final k2 = (s['sections'] as Map?)?['km'] != null ? toD((s['sections'] as Map)['km']) : prev;
-            km += (k2 - prev).abs(); prev = k2;
+            if (byPlace) {
+              final q = _stopAt(s)!;
+              km += metres(at.$1, at.$2, q.$1, q.$2) / 1000;
+              at = q;
+            } else {
+              final k2 = (s['sections'] as Map?)?['km'] != null ? toD((s['sections'] as Map)['km']) : prev;
+              km += (k2 - prev).abs(); prev = k2;
+            }
             plan.add((s, start.add(Duration(seconds: (((km / speed) * 60 + i * stopMin) * 60).round()))));
           }
           final mins = ((km / speed) * 60 + list.length * stopMin).round();
           void move(int i, int dd) { final x = [...seq]; final j = i + dd; if (j < 0 || j >= x.length) return; final t = x[i]; x[i] = x[j]; x[j] = t; setState(() => order = x); }
           Future<void> save() => act(() async {
-                await call('set_route', {'p_batch': widget.id, 'p_stops': [for (final p in plan) {'section': p.$1['section_id'], 'eta': p.$2.toUtc().toIso8601String()}], 'p_km': (km * 10).round() / 10, 'p_minutes': mins});
+                await call('set_route', {'p_batch': widget.id, 'p_stops': [for (final p in plan) p.$1['section_id'] != null ? {'section': p.$1['section_id'], 'eta': p.$2.toUtc().toIso8601String()} : {'order': p.$1['order_id'], 'eta': p.$2.toUtc().toIso8601String()}], 'p_km': (km * 10).round() / 10, 'p_minutes': mins});
                 if (context.mounted) context.push('/owner/batches/${widget.id}/dispatch');
               });
           return Screen(
-            top: const Top(title: 'Route', sub: 'In order of the road', back: ''),
+            top: const Top(title: 'Route', sub: 'Nearest first', back: ''),
             foot: foot([_row([
               Expanded(child: Btn('Reset', icon: 'refresh-cw', kind: BtnKind.ghost, onTap: () => setState(() => order = null))),
               Expanded(flex: 2, child: Btn('Next: dispatch', kind: BtnKind.navy, busy: busy, onTap: list.isEmpty ? null : save)),
@@ -550,18 +589,18 @@ class _BatchRouteState extends State<BatchRoute> with Act {
             children: [
               ClipRRect(borderRadius: BorderRadius.circular(20), child: Builder(builder: (_) {
                 // (23-11-2026) the Google map when the sections have their places; the drawn road otherwise
-                final marks = [for (final (i, p) in list.indexed) if ((p['sections'] as Map?)?['lat'] != null && (p['sections'] as Map?)?['lng'] != null)
-                  Mark(toD((p['sections'] as Map)['lat']), toD((p['sections'] as Map)['lng']), 'stop', label: '${i + 1}', title: '${(p['sections'] as Map)['code']}')];
-                return GMap(height: 220, label: 'Map: the stops of the batch', marks: marks, line: [for (final m in marks) (m.lat, m.lng)], fallback: RoadMap(sections: [for (final p in list) MapSection('${p['section_id']}', '${(p['sections'] as Map?)?['code']}', (p['sections'] as Map?)?['km'] == null ? null : toD((p['sections'] as Map)['km']))],
+                final marks = [for (final (i, p) in list.indexed) if (_stopAt(p) != null) Mark(_stopAt(p)!.$1, _stopAt(p)!.$2, 'stop', label: '${i + 1}', title: _stopName(p))];
+                return GMap(height: 220, label: 'Map: the stops of the batch', marks: marks, line: [for (final m in marks) (m.lat, m.lng)], fallback: RoadMap(sections: [for (final p in list) if (p['sections'] is Map) MapSection(_stopKey(p), '${(p['sections'] as Map?)?['code']}', (p['sections'] as Map?)?['km'] == null ? null : toD((p['sections'] as Map)['km']))],
                   height: 220, label: 'The stops of the batch on the road'));
               })),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$mins min', style: T.big.copyWith(fontSize: 28)),
-                Text('${(km * 10).round() / 10} km by chainage · estimated at ${speed.round()} km/h, ${stopMin.round()} min a stop', style: T.xs)]),
+                Text('${(km * 10).round() / 10} km ${byPlace ? 'in straight lines' : 'by chainage'} · estimated at ${speed.round()} km/h, ${stopMin.round()} min a stop', style: T.xs)]),
               FCard(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4), child: Column(children: [
                 for (final (i, (s, eta)) in plan.indexed)
                   Container(padding: const EdgeInsets.symmetric(vertical: 7), decoration: BoxDecoration(border: i < plan.length - 1 ? const Border(bottom: BorderSide(color: C.line)) : null), child: _row([
                     Av('${i + 1}', size: 26, tone: Tone.navy),
-                    Expanded(child: Text('${(s['sections'] as Map?)?['code']}${(s['sections'] as Map?)?['km'] != null ? ' · Km ${(s['sections'] as Map)['km']}' : ''} · ${orders.where((o) => (o['orders'] as Map?)?['to_section_id'] == s['section_id']).length} parcels', style: T.body.copyWith(fontSize: 14))),
+                    Expanded(child: Text('${_stopName(s)}${(s['sections'] as Map?)?['km'] != null ? ' · Km ${(s['sections'] as Map)['km']}' : ''} · ${s['section_id'] != null ? orders.where((o) => (o['orders'] as Map?)?['to_section_id'] == s['section_id']).length : 1} parcels', style: T.body.copyWith(fontSize: 14))),
+                    if (s['sections'] is! Map && _stopAt(s) != null) directions(_stopAt(s)!.$1, _stopAt(s)!.$2, label: 'Map'),
                     Text(time(eta.toUtc().toIso8601String()), style: T.xs.copyWith(fontWeight: FontWeight.w700)),
                     Chip2('', icon: 'chevron-down', height: 26, onTap: () => move(i, -1)),
                   ], gap: 8)),
@@ -660,7 +699,7 @@ class Live extends StatelessWidget {
         watch: const ['batches', 'batch_stops', 'order_lines', 'track_points'],
         title: 'Live',
         load: (m) async {
-          final b = await rows(sb.from('batches').select('*,batch_stops(seq,reached_at,sections(code,lat,lng))').eq('mess_id', m.id).eq('service_date', today()).neq('state', 'cancelled').order('code'));
+          final b = await rows(sb.from('batches').select('*,batch_stops(seq,reached_at,sections(code,lat,lng),orders(code,to_lat,to_lng))').eq('mess_id', m.id).eq('service_date', today()).neq('state', 'cancelled').order('code'));
           // (23-11-2026, picture N5) each van on the road where its driver's phone last said
           final road = [for (final x in b) if (x['state'] == 'on_the_way') '${x['id']}'];
           final pts = road.isEmpty ? <Rec>[] : await rows(sb.from('track_points').select('batch_id,lat,lng,at').inFilter('batch_id', road).order('at', ascending: false).limit(200));
@@ -678,8 +717,8 @@ class Live extends StatelessWidget {
                 final marks = <Mark>[];
                 for (final b in batches.where((b) => b['state'] == 'on_the_way')) {
                   for (final y in _list(b['batch_stops'])) {
-                    final sc = y['sections'];
-                    if (y['reached_at'] == null && sc is Map && sc['lat'] != null && sc['lng'] != null) marks.add(Mark(toD(sc['lat']), toD(sc['lng']), 'stop', label: '${sc['code']}', title: '${b['code']} · ${sc['code']}'));
+                    final q = _stopAt(y), nm = y['sections'] is Map ? '${(y['sections'] as Map)['code']}' : 'Location';
+                    if (y['reached_at'] == null && q != null) marks.add(Mark(q.$1, q.$2, 'stop', label: nm, title: '${b['code']} · $nm'));
                   }
                   final last = pts.where((p) => p['batch_id'] == b['id']).firstOrNull;
                   if (last != null) marks.add(Mark(toD(last['lat']), toD(last['lng']), 'van', label: '${b['code']}', title: '${b['code']}'));
@@ -705,7 +744,7 @@ class Live extends StatelessWidget {
               for (final (o, l) in short)
                 Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), decoration: BoxDecoration(color: C.redS, borderRadius: BorderRadius.circular(14)), child: _row([
                   const Ico('package-x', size: 16, color: Color(0xFF8B1A1A)),
-                  Expanded(child: Text('${secOf(o)?['code'] ?? ''} · ${o['code']}: ${l['person']} got ${l['short_qty']} ${'${l['item']}'.toLowerCase()} less', style: T.sm.copyWith(color: const Color(0xFF8B1A1A))))])),
+                  Expanded(child: Text('${whereOf(o) ?? ''} · ${o['code']}: ${l['person']} got ${l['short_qty']} ${'${l['item']}'.toLowerCase()} less', style: T.sm.copyWith(color: const Color(0xFF8B1A1A))))])),
             ],
           );
         },
@@ -792,7 +831,7 @@ class GuestMeals extends StatelessWidget {
                   _row([Av(initials('${linesOf(o).firstOrNull?['person'] ?? ''}'), tone: Tone.plum), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('${linesOf(o).firstOrNull?['person'] ?? ''}', style: T.b), Text('asked by ${o['requester']}', style: T.xs)])), Tag('${o['code']}')], gap: 12),
                   _row([Ico(o['kind'] == 'meal' ? 'utensils' : 'package', size: 16, color: C.muted),
-                    Expanded(child: Text('${mealName(o['meal'] as String?)} ${o['kind'] == 'meal' ? 'at the mess' : 'parcel'}${secOf(o) != null ? ' · ${secOf(o)!['code']}' : ''}', style: T.sm)),
+                    Expanded(child: Text('${mealName(o['meal'] as String?)} ${o['kind'] == 'meal' ? 'at the mess' : 'parcel'}${whereOf(o) != null ? ' · ${whereOf(o)}' : ''}', style: T.sm)),
                     Chip2('${o['state']}', tone: o['state'] == 'delivered' ? Tone.leaf : Tone.amber, height: 24)]),
                 ])),
             ],

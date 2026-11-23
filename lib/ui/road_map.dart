@@ -1,5 +1,5 @@
-// The road as the designs draw it (boards e05, e09, o08, o10, d05): the corridor by chainage, its circles, the sections as pins,
-// the van between its stops – drawn from FALCON's own data (the km of each section), the same as the web's src/ui/RoadMap.tsx.
+// The road as the designs draw it (boards e05, e09, o08, o10, d05): the corridor by chainage, the sections as pins (Wolf 0017: only
+// sections – no circle), the van between its stops – drawn from FALCON's own data (the km of each section), the same as the web's src/ui/RoadMap.tsx.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -7,24 +7,14 @@ import 'package:flutter/material.dart';
 import 'look.dart';
 
 class MapSection {
-  const MapSection(this.id, this.code, this.km, {this.circle});
+  const MapSection(this.id, this.code, this.km);
   final String id, code;
   final double? km;
-  final String? circle;
 }
-
-class MapCircle {
-  const MapCircle(this.code, this.kmFrom, this.kmTo);
-  final String code;
-  final double? kmFrom, kmTo;
-}
-
-const _colors = [Color(0xFF2F7A45), Color(0xFF1E63D6), Color(0xFFC2560E), Color(0xFF7B3FD0), Color(0xFFB07A1E)];
 
 class RoadMap extends StatelessWidget {
-  const RoadMap({super.key, required this.sections, this.circles = const [], this.mine, this.van, this.done = const [], this.height = 240, this.dark = false, required this.label});
+  const RoadMap({super.key, required this.sections, this.mine, this.van, this.done = const [], this.height = 240, this.dark = false, required this.label});
   final List<MapSection> sections;
-  final List<MapCircle> circles;
   final String? mine;
   final double? van;
   final List<String> done;
@@ -45,7 +35,7 @@ class _Road extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final kms = <double>[...m.sections.map((s) => s.km ?? 0), for (final c in m.circles) ...[c.kmFrom ?? 0, c.kmTo ?? 0]];
+    final kms = <double>[...m.sections.map((s) => s.km ?? 0)];
     final lo = math.min(0.0, kms.isEmpty ? 0.0 : kms.reduce(math.min)), hi = math.max(1.0, kms.isEmpty ? 1.0 : kms.reduce(math.max));
     final span = (hi - lo) == 0 ? 1.0 : hi - lo;
     // the web draws on 400 × 240 and covers the box ("slice"); the same here
@@ -76,14 +66,6 @@ class _Road extends CustomPainter {
     Paint stroke(Color c, double w) => Paint()..color = c..strokeWidth = w..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
     canvas.drawPath(path(lo, hi), stroke(edge, 18));
     canvas.drawPath(path(lo, hi), stroke(road, 12));
-    for (var i = 0; i < m.circles.length; i++) {
-      final c = m.circles[i];
-      if (c.kmFrom == null || c.kmTo == null) continue;
-      final col = _colors[i % _colors.length];
-      canvas.drawPath(path(c.kmFrom!, c.kmTo!), stroke(col.withValues(alpha: 0.55), 4)..strokeCap = StrokeCap.butt);
-      final mid = (c.kmFrom! + c.kmTo!) / 2;
-      _text(canvas, 'Circle ${c.code}', Offset(x(mid), y(mid) + 34), col, 10, FontWeight.w600);
-    }
     for (final s in m.sections) {
       if (s.km == null) continue;
       final on = s.id == m.mine, d = m.done.contains(s.id);

@@ -247,7 +247,7 @@ class _FoundState extends State<Found> with Act {
   Widget build(BuildContext context) {
     if (Flow.token == null || Flow.hr.isEmpty) return const Gone();
     final hr = Flow.hr, st = site, secs = _sectionsOf(st);
-    final secName = secs.where((x) => x['id'] == section).map((x) => '${x['circle']} · ${x['code']}').firstOrNull;
+    final secName = secs.where((x) => x['id'] == section).map((x) => '${x['code']}').firstOrNull;
     Widget row(String k, String? v, {bool last = false}) => Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(border: last ? null : const Border(bottom: BorderSide(color: C.line))),
@@ -273,10 +273,10 @@ class _FoundState extends State<Found> with Act {
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: C.line))),
             child: Row(children: [
-              Expanded(child: Text('Circle · section', style: T.sm)),
+              Expanded(child: Text('Section', style: T.sm)),
               if (secs.isNotEmpty)
                 Chip2(secName ?? 'Pick', tone: Tone.leaf, onTap: () async {
-                  final v = await choose(context, 'Your circle and section', [for (final x in secs) ('${x['id']}', '${x['circle']} · ${x['code']} – ${x['name']}')]);
+                  final v = await choose(context, 'Your section', [for (final x in secs) ('${x['id']}', '${x['code']} – ${x['name']}')]);
                   if (v != null) setState(() => section = v);
                 })
               else
@@ -285,7 +285,7 @@ class _FoundState extends State<Found> with Act {
           ),
           row('WhatsApp', hr['mobile_masked'] as String?, last: true),
         ])),
-        const InfoLine('Locked details come from HR. Your pick of circle is checked by the Site Admin.'),
+        const InfoLine('Locked details come from HR. Your pick of section is checked by the Site Admin.'),
         const InfoLine('Something wrong? Tell HR – they correct it', icon: 'message-circle'),
         ErrorLine(error),
       ],
@@ -429,7 +429,7 @@ class Done extends StatelessWidget {
           const SizedBox(height: 10),
           const _Can('utensils', 'Take meals at your site\'s mess'),
           const _Can('package', 'Ask for parcels to your section'),
-          if (s.me?['home_section_id'] == null) const _Can('clock-alert', 'Your circle and section wait for the Site Admin\'s OK'),
+          if (s.me?['home_section_id'] == null) const _Can('clock-alert', 'Your section waits for the Site Admin\'s OK'),
         ])),
         const SizedBox(height: 20),
         Btn('Open FALCON', kind: BtnKind.leaf, onTap: () => context.go('/')),
@@ -544,9 +544,9 @@ class _NewRegState extends State<NewReg> with Act {
             if (v != null) setState(() { site = v; section = null; });
           })),
           const SizedBox(width: 10),
-          Expanded(child: PickField(label: 'Circle · section', value: secs.where((x) => x['id'] == section).map((x) => '${x['circle']} · ${x['code']}').firstOrNull,
+          Expanded(child: PickField(label: 'Section', value: secs.where((x) => x['id'] == section).map((x) => '${x['code']}').firstOrNull,
               onTap: secs.isEmpty ? null : () async {
-                final v = await choose(context, 'Your circle and section', [for (final x in secs) ('${x['id']}', '${x['circle']} · ${x['code']} – ${x['name']}')]);
+                final v = await choose(context, 'Your section', [for (final x in secs) ('${x['id']}', '${x['code']} – ${x['name']}')]);
                 if (v != null) setState(() => section = v);
               })),
         ]),
