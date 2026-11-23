@@ -13,6 +13,7 @@ import '../config.dart';
 import 'db.dart';
 import 'door.dart';
 import 'fmt.dart';
+import 'meals.dart' show inUse;
 
 enum Status { loading, off, signedout, noperson, ready, stopped }
 
@@ -130,12 +131,12 @@ class Session extends ChangeNotifier {
       }
       final res = await Future.wait([
         rows(sb.from('role_grants').select('id,role,site_id,mess_id,valid_from,valid_to').eq('person_id', p['id'] as String).isFilter('revoked_at', null)),
-        rows(sb.from('sites').select('id,code,name').eq('active', true).order('code')),
+        rows(sb.from('sites').select('id,code,name,active,valid_from,valid_to').eq('active', true).order('code')),
         rows(sb.from('companies').select('code').limit(1)),
       ]);
       final t = today();
       grants = res[0].map(Grant.new).where((g) => g.from.compareTo(t) <= 0 && (g.to == null || g.to!.compareTo(t) >= 0)).toList();
-      sites = res[1].map(Site.new).toList();
+      sites = res[1].where((r) => inUse(r)).map(Site.new).toList(); // (23-11-2026) only the sites in use today
       companyCode = res[2].isEmpty ? '' : '${res[2].first['code']}';
       me = p;
       status = Status.ready;
