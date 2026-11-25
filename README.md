@@ -32,6 +32,14 @@ timeout 300 flutter analyze --no-fatal-infos
 timeout 300 flutter test
 ```
 
+## The WhatsApp code – copied in WhatsApp, back in FALCON (25-11-2026)
+
+His word: "otp whats app la yeto mi whats app war jaun copy krun alo ki ekde falcon madhe otp taku det nahi screen la touch kel tr otp
+box madhe kahi jat nahi". The six boxes (`lib/ui/kit.dart` `CodeBoxes`) work as the ERP app's sign-in: the one real box lies over the six,
+so a touch opens the keyboard again (before, the touch only asked for a focus the box still had – the keyboard did not come back); back
+from WhatsApp the code copied there ("Copy code") fills the boxes by itself and is checked (Android; never the same code twice), else the
+keyboard comes again; **Paste code** takes the six digits of anything copied. The code a guest says to the employee: no paste.
+
 ## Where he is, Google Map, opened from HR (23-11-2026 – pictures N1–N8, approved "ho banaw")
 
 * **The mess home** reads the phone's place while it is open (`lib/core/geo.dart` – nothing is saved or sent): inside the mess's

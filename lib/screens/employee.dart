@@ -1358,7 +1358,7 @@ class _GuestRequestState extends State<GuestRequest> with Act {
             if (step == 1) ...[
               Field('Full name', Input(controller: name, hint: 'Guest\'s name', caps: TextCapitalization.words)),
               Field('Mobile number', Input(controller: mobile, hint: '10 digits', keyboard: TextInputType.phone, maxLength: 14, icon: 'phone')),
-              if (token != null) Field('The code the guest got on WhatsApp', CodeBoxes(onDone: check))
+              if (token != null) Field('The code the guest got on WhatsApp', CodeBoxes(onDone: check, paste: false))
               else Btn('Send the guest a code', icon: 'message-circle', kind: BtnKind.ghost, busy: busy, onTap: sendCode),
               Field('The guest is', Wrap2([for (final k in const ['Company guest', 'Client', 'Govt officer', 'Visitor', 'Subcontractor', 'Vendor']) Chip2(k, tone: kind == k ? Tone.on : Tone.plain, onTap: () => setState(() => kind = k))], gap: 6)),
               _row([Expanded(child: Field('Company', Input(controller: org, hint: 'optional'))), Expanded(child: Field('Designation', Input(controller: desig, hint: 'optional')))], gap: 10),
