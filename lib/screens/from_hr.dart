@@ -37,12 +37,7 @@ class _FromHrState extends State<FromHr> {
       return;
     }
     try {
-      final r = await api('/api/hr', {'pass': widget.pass, 'device_hash': await deviceHash()}, withToken: false);
-      final ses = r['session'];
-      if (ses is! Map || '${ses['refresh_token'] ?? ''}'.isEmpty) throw DbError('FALCON could not sign you in – try again.', 'session');
-      await sb.auth.setSession('${ses['refresh_token']}');
-      final hr = r['hr'] is Map ? r['hr'] as Map : const {};
-      Prefs.hr = jsonEncode({'day': '${hr['day'] ?? today()}', 'in': hr['in'], 'banner': true});
+      await signInFromHr(widget.pass);
       if (!mounted) return;
       await SessionScope.read(context).load();
       if (mounted) context.go('/');
@@ -65,6 +60,17 @@ class _FromHrState extends State<FromHr> {
             Btn('Use FALCON\'s own sign-in', kind: BtnKind.ghost, onTap: () => context.go('/start')),
         ],
       ]);
+}
+
+/// HR's pass → his FALCON sign-in on this phone (FALCON's server checks the pass: signed by HR, 2 minutes, once); what HR said for
+/// today is kept for the home's "Present since" line. Used by this page and by the warm start inside RCL's app (embed.dart).
+Future<void> signInFromHr(String pass) async {
+  final r = await api('/api/hr', {'pass': pass, 'device_hash': await deviceHash()}, withToken: false);
+  final ses = r['session'];
+  if (ses is! Map || '${ses['refresh_token'] ?? ''}'.isEmpty) throw DbError('FALCON could not sign you in – try again.', 'session');
+  await sb.auth.setSession('${ses['refresh_token']}');
+  final hr = r['hr'] is Map ? r['hr'] as Map : const {};
+  Prefs.hr = jsonEncode({'day': '${hr['day'] ?? today()}', 'in': hr['in'], 'banner': false});
 }
 
 /// What HR said for today: {day, in, banner} – null on another day.

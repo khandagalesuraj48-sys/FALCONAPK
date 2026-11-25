@@ -47,6 +47,23 @@ timeout 300 flutter analyze --no-fatal-infos
 timeout 300 flutter test
 ```
 
+## The place exact and at once · Parcel only outside the mess · Google's map · opened from the ERP / HR app at once (25-11-2026)
+
+His words: "falcon madhe pn location fetch 1 second madhe hoyla hawey"; "jar mi outside asel mess pasun at the mess option band asel tyala
+parcel gheyla lagel"; "kal pahile mess pasun 20 km lamb hoto but app sangat hote 5 km … ekdm perfect"; "signed in through RCL HR … comes
+from HR by itself he nko"; "final back erp hr madhe jail app band nahi"; "falcon madhe sagle thikani google map … other map nahi"; "hr aso
+erp aso app open zalel zale tyache maghe auto falcon pn on hoil … falcon opening chi screen ti yenar nahi".
+* **The place** (`lib/core/geo.dart`): one reading of its own at once beside the stream (inside the ERP the phone's stream may be the HR
+  tracking's, a point in minutes); only an **exact** reading (± 100 m or better) gives the distance, "at the mess", his section or the van's
+  point – a rough one (the towers, no GPS yet: kilometres off – the wrong 5 km) says "Finding your exact place… (± …)"; a rough reading
+  does not push out an exact one of the last 30 s.
+* **Outside the mess area** (an exact reading): "At the mess" is dim and cannot be chosen – Parcel only (the home and the Parcel page).
+* The two cards of HR on the home are gone. "‹ HR" on the home goes back to the ERP / HR page inside that app (it closed the whole app).
+* **Google's map everywhere**: with no point of its own (sections without a place), the map shows the phone's place – the drawn road
+  only in an app built without the key.
+* **Inside the ERP / HR app** (`lib/embed.dart` `falconWarm`): made ready behind it as it opens – signed in with HR's pass, his home read –
+  so Mess opens straight on the home; the home read a moment ago is shown at once and read again quietly (`Load.first`).
+
 ## The WhatsApp code – copied in WhatsApp, back in FALCON (25-11-2026)
 
 His word: "otp whats app la yeto mi whats app war jaun copy krun alo ki ekde falcon madhe otp taku det nahi screen la touch kel tr otp

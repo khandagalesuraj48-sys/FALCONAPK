@@ -84,8 +84,10 @@ Future<Rec> api(String path, Map<String, dynamic> payload, {bool withToken = tru
 /// Load something and show it: loading → the screen, or the error in words with "Try again". It loads again when reload() is
 /// called, and quietly when one of the watched tables changes (Supabase Realtime – only the rows the person may read).
 class Load<T> extends StatefulWidget {
-  const Load({super.key, required this.load, required this.builder, this.watch = const [], this.loading});
+  const Load({super.key, required this.load, required this.builder, this.watch = const [], this.loading, this.first});
   final Future<T> Function() load;
+  /// (25-11-2026) what to show at once (read a moment ago) – then it is read again quietly
+  final T? first;
   final Widget Function(BuildContext context, T data, VoidCallback reload) builder;
   final List<String> watch;
   final Widget? loading;
@@ -104,7 +106,13 @@ class _LoadState<T> extends State<Load<T>> {
   @override
   void initState() {
     super.initState();
-    _run();
+    final f = widget.first;
+    if (f != null) {
+      _data = f;
+      _has = true;
+      _busy = false;
+    }
+    _run(quiet: f != null);
     if (widget.watch.isNotEmpty) {
       var ch = sb.channel('watch-${widget.watch.join('-')}-${identityHashCode(this)}');
       for (final t in widget.watch) {

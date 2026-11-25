@@ -1,6 +1,7 @@
 // The Google map (23-11-2026, his decision: "map lauya" – with the ERP's own Google Maps key, the GitHub secret MAPS_API_KEY at the
-// build, as the ERP app; pictures N2–N5). FALCON's own points: you, the mess, the van, the sections. Built without the key, or
-// no point has a place yet: the drawn road of before (`fallback`) – the same as the web's src/ui/GMap.tsx.
+// build, as the ERP app; pictures N2–N5). FALCON's own points: you, the mess, the van, the sections. Built without the key: the drawn
+// road of before (`fallback`). (25-11-2026, his word: "sagle thikani google map … other map nahi") no point has a place yet: Google's
+// map with the phone's own place – never the drawn road in an app built with the key.
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 
@@ -47,14 +48,27 @@ class _GMapState extends State<GMap> {
   gm.GoogleMapController? _c;
   String _fitted = '';
 
-  bool get _live => widget.me != null && mapsOn && widget.marks.isNotEmpty;
-  @override
-  void initState() {
-    super.initState();
+  /// (25-11-2026, his word: "falcon madhe sagle thikani google map disayla pahijey ok other map nahi") with no point of its own (sections
+  /// without a place on the map), the map shows where the phone is – Google's map, never the drawn road (that one only without a key)
+  bool get _want => mapsOn && ((widget.me != null && widget.marks.isNotEmpty) || widget.marks.isEmpty);
+  bool _live = false; // listening to the phone's place
+
+  void _sync() {
+    if (_want == _live) return;
+    _live = _want;
     if (_live) {
       Here.i.addListener(_moved);
       Here.i.use();
+    } else {
+      Here.i.removeListener(_moved);
+      Here.i.done();
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
   }
 
   void _moved() {
@@ -70,7 +84,7 @@ class _GMapState extends State<GMap> {
     super.dispose();
   }
 
-  List<Mark> get _marks => [...widget.marks, if (_live && Here.i.state == 'ok') Mark(Here.i.lat, Here.i.lng, widget.me!, title: 'You')];
+  List<Mark> get _marks => [...widget.marks, if (_live && Here.i.state == 'ok' && (widget.me != null || widget.marks.isEmpty)) Mark(Here.i.lat, Here.i.lng, widget.me ?? 'you', title: 'You')];
   List<(double, double)> get _line => _live && Here.i.state == 'ok' && widget.line.isNotEmpty ? [(Here.i.lat, Here.i.lng), ...widget.line] : widget.line;
 
   String get _fitKey => '${_marks.map((m) => '${m.kind}${m.label ?? ''}').join('|')}:${_line.length}:${widget.ring?.$3 ?? 0}';
@@ -101,13 +115,25 @@ class _GMapState extends State<GMap> {
   @override
   void didUpdateWidget(GMap old) {
     super.didUpdateWidget(old);
+    _sync();
     WidgetsBinding.instance.addPostFrameCallback((_) => _fit());
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!mapsOn || widget.marks.isEmpty) return widget.fallback;
-    final first = widget.marks.first;
+    if (!mapsOn) return widget.fallback;
+    final all = _marks;
+    if (all.isEmpty) {
+      // nothing to show yet: the phone's place is being found (or the location is off)
+      return Semantics(label: widget.label, child: Container(
+        height: widget.height,
+        alignment: Alignment.center,
+        color: widget.dark ? const Color(0xFF16233A) : const Color(0xFFEAF0EC),
+        child: Text(Here.i.state == 'off' ? 'Location is off – the map shows you when it is on' : 'Finding where you are…',
+            key: const Key('gmap-finding'), textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: widget.dark ? Colors.white70 : const Color(0xFF55605A))),
+      ));
+    }
+    final first = all.first;
     return Semantics(
       label: widget.label,
       child: SizedBox(
