@@ -7,9 +7,14 @@
 #   – a patch that went wrong: Shorebird console → FALCON → the release → the patch → Roll back (the phones go back by themselves).
 # Box "Send the patch" unticked: --dry-run – built and checked, nothing goes out.
 # Needs SHOREBIRD_TOKEN, FALCON_SUPABASE_SECRET and the build's settings. Never in a file, never in chat.
-# (25-11-2026) GitHub had not taken this file in when it was merged (Actions showed no "patch"); this change makes it read it again.
+# (25-11-2026) GitHub did not take this file in when it was merged – twice (Actions showed no "patch"; a copy of it on another branch
+# WITH a push trigger was taken at once, so the file is right). So it has a push trigger too – only for a change of this very file on
+# main, and the job never runs on it (skipped): its only use is that GitHub reads the file.
 name: patch
 on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/patch.yml']
   workflow_dispatch:
     inputs:
       release:
@@ -28,7 +33,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   patch:
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
