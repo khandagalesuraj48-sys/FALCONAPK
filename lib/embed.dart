@@ -5,15 +5,20 @@
 // does not use this file and is unchanged.
 //   await falconStart();                       once, before the first screen (FALCON's database, settings, clock)
 //   FalconInApp(pass: <HR's pass>, onLeave: …)  a page of the other app: FALCON's screens from /hr?p=<pass>
+//   (25-11-2026) await falconWarm(<HR's pass>, who)  while the other app opens: started, signed in, his home read – then
+//   FalconInApp(pass: '', …) opens straight on FALCON's home (falconWarmFor(who)); falconForget() when he signs out there.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
 
 import 'config.dart';
 import 'core/clock.dart';
+import 'core/db.dart' show sb;
 import 'core/prefs.dart';
 import 'core/session.dart';
 import 'routes.dart';
+import 'screens/employee.dart' show homeData;
+import 'screens/from_hr.dart' show passShape, signInFromHr;
 import 'ui/look.dart';
 
 /// true while FALCON runs inside another app – its pictures are then read from this package's files, the "back to the app"
@@ -49,7 +54,43 @@ Future<void> falconStart() async {
   _started = true;
 }
 
-/// FALCON's screens as one page of the other app, opened with HR's pass.
+String _warmWho = '';
+
+/// (25-11-2026, his word: "hr aso erp aso app open zalel zale tyache maghe auto falcon pn on hoil jene krun user jewa hr or erp madhun
+/// mess order kade jato tya weli ek screen yete falcon opening chi ti yenar nahi") FALCON made ready BEHIND the other app as it opens:
+/// started, signed in with HR's pass (as the page /hr does), his person and his home read – so Mess opens straight on FALCON's home.
+/// [who]: the person of the other app (his sign-in there). true = ready. Nothing is shown; a failure leaves the page /hr to do it.
+Future<bool> falconWarm(String pass, String who) async {
+  await falconStart();
+  if (!Config.ready || !passShape.hasMatch(pass) || who.isEmpty) return false;
+  try {
+    await signInFromHr(pass);
+    await _session!.load();
+    if (_session!.me == null) return false;
+    _warmWho = who;
+    try {
+      await homeData(_session!);
+    } catch (_) {/* the home reads it when opened */}
+    return true;
+  } catch (_) {
+    _warmWho = '';
+    return false;
+  }
+}
+
+/// FALCON is ready for [who] (signed in by [falconWarm] in this run of the app, still signed in).
+bool falconWarmFor(String who) => _started && who.isNotEmpty && who == _warmWho && sb.auth.currentSession != null && _session?.me != null;
+
+/// He signed out of the other app: FALCON's sign-in on this phone ends too.
+Future<void> falconForget() async {
+  _warmWho = '';
+  if (!_started) return;
+  try {
+    await sb.auth.signOut();
+  } catch (_) {/* signed out already */}
+}
+
+/// FALCON's screens as one page of the other app, opened with HR's pass – or, made ready by [falconWarm] (pass ''), on its home.
 class FalconInApp extends StatefulWidget {
   const FalconInApp({super.key, required this.pass, required this.onLeave});
   final String pass;
@@ -60,7 +101,7 @@ class FalconInApp extends StatefulWidget {
 
 class _FalconInAppState extends State<FalconInApp> {
   late final Session session = _session ?? (Session()..start());
-  late final GoRouter router = buildRouter(session, initial: '/hr?p=${Uri.encodeQueryComponent(widget.pass)}');
+  late final GoRouter router = buildRouter(session, initial: widget.pass.isEmpty ? '/' : '/hr?p=${Uri.encodeQueryComponent(widget.pass)}');
 
   @override
   void initState() {

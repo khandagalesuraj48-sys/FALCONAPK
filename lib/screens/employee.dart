@@ -25,7 +25,8 @@ import '../ui/kit.dart';
 import '../ui/look.dart';
 import '../ui/road_map.dart';
 import '../ui/gmap.dart';
-import 'from_hr.dart' show hrToday, closeHrBanner;
+import 'from_hr.dart' show hrToday;
+import '../embed.dart' show falconEmbedded, falconLeave;
 
 const empTabs = [
   TabItem('/app', 'house', 'Home'), TabItem('/app/orders', 'receipt', 'Orders'), TabItem('/app/scan', 'scan-line', 'Scan mess QR', plus: true),
@@ -52,6 +53,17 @@ Future<MessDay> messDay(Session s, [String? date]) async {
   return MessDay(list, m, await windows(m?.id, date ?? today()));
 }
 
+/// "‹ HR" on the home: back to the app FALCON was opened from. (25-11-2026, his word: "final back erp hr madhe jail app band nahi")
+/// Inside RCL's ERP / HR app: back to that app's page – never closing the whole app (it closed the ERP app before).
+void _backToHr() {
+  final leave = falconLeave;
+  if (falconEmbedded && leave != null) {
+    leave();
+  } else {
+    SystemNavigator.pop();
+  }
+}
+
 Widget _row(List<Widget> c, {double gap = 8}) => Row(children: [for (var i = 0; i < c.length; i++) ...[if (i > 0) SizedBox(width: gap), c[i]]]);
 Widget _col(List<Widget> c, {double gap = 12}) =>
     Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [for (var i = 0; i < c.length; i++) ...[if (i > 0) SizedBox(height: gap), c[i]]]);
@@ -64,23 +76,47 @@ Widget foot(List<Widget> children) => Container(
 
 Tone _stateTone(String st) => st == 'delivered' ? Tone.leaf : st == 'dispatched' ? Tone.blue : ['refused', 'cancelled', 'failed'].contains(st) ? Tone.red : Tone.amber;
 
+/// "At the mess" or "Parcel" on the home: outside the mess area ([here] false – an exact reading) Parcel only, whatever he chose; at
+/// the mess, the mess unless he chose Parcel; not known yet: his choice, else none.
+String? placeMode(String? pick, bool? here) => here == false ? 'parcel' : pick ?? (here == true ? 'mess' : null);
+
+typedef HomeData = (MessDay, List<Rec>, Rec?, Rec?, int);
+
+HomeData? _lastHome;
+String _lastHomeWho = '';
+int _lastHomeAt = 0;
+
+/// The mess home's data – read by the home and, inside RCL's ERP / HR app, ahead while that app opens (embed.dart falconWarm).
+Future<HomeData> homeData(Session s) async {
+  final d = await messDay(s);
+  final menus = d.mess == null ? <Rec>[] : await rows(sb.from('menus').select('meal,dishes').eq('mess_id', d.mess!.id).eq('service_date', today()));
+  final active = await one(sb.from('orders').select().gte('service_date', today()).not('state', 'in', '(cancelled,refused,failed)').order('created_at', ascending: false).limit(1));
+  final month = await call<dynamic>('my_month');
+  final unread = await rows(sb.from('notifications').select('id').isFilter('read_at', null).limit(20));
+  final h = (d, menus, active, month is Map ? Map<String, dynamic>.from(month) : null, unread.length);
+  _lastHome = h;
+  _lastHomeWho = s.personId ?? '';
+  _lastHomeAt = DateTime.now().millisecondsSinceEpoch;
+  return h;
+}
+
+/// The home read in the last 10 minutes for this same person – shown at once (then read again); null: none.
+HomeData? homeShown(Session s) =>
+    _lastHome != null && _lastHomeWho.isNotEmpty && _lastHomeWho == (s.personId ?? '') && DateTime.now().millisecondsSinceEpoch - _lastHomeAt < 10 * 60 * 1000 ? _lastHome : null;
+
 // ── Main · Mess home ──
 class EmpHome extends StatelessWidget {
   const EmpHome({super.key});
   @override
   Widget build(BuildContext context) {
     final s = SessionScope.of(context);
-    return Load<(MessDay, List<Rec>, Rec?, Rec?, int)>(
+    return Load<HomeData>(
       watch: const ['orders', 'notifications'],
       loading: const Screen(children: [Loading()]),
-      load: () async {
-        final d = await messDay(s);
-        final menus = d.mess == null ? <Rec>[] : await rows(sb.from('menus').select('meal,dishes').eq('mess_id', d.mess!.id).eq('service_date', today()));
-        final active = await one(sb.from('orders').select().gte('service_date', today()).not('state', 'in', '(cancelled,refused,failed)').order('created_at', ascending: false).limit(1));
-        final month = await call<dynamic>('my_month');
-        final unread = await rows(sb.from('notifications').select('id').isFilter('read_at', null).limit(20));
-        return (d, menus, active, month is Map ? Map<String, dynamic>.from(month) : null, unread.length);
-      },
+      // (25-11-2026, "falcon opening chi screen ti yenar nahi") the home read a moment ago (the warm start, or the last opening) is
+      // shown at once and read again quietly
+      first: homeShown(s),
+      load: () => homeData(s),
       builder: (context, x, reload) {
         final (d, menus, o, month, unread) = x;
         final meal = currentMeal(d.wins), w = d.win(meal), st = winState(w, today(), 'meal');
@@ -88,7 +124,7 @@ class EmpHome extends StatelessWidget {
         const progress = {'requested': .15, 'accepted': .35, 'preparing': .5, 'ready': .6, 'dispatched': .8, 'delivered': 1.0};
         return Screen(
           // (23-11-2026, picture N8) opened from HR today: "‹ HR" goes back to the HR / ERP app
-          top: Top(left: hrToday() != null ? Chip2('HR', icon: 'chevron-left', height: 36, onTap: () => SystemNavigator.pop()) : Av(initials(s.name)), title: '${greeting()}, ${firstName(s.name)}',
+          top: Top(left: hrToday() != null ? Chip2('HR', icon: 'chevron-left', height: 36, onTap: _backToHr) : Av(initials(s.name)), title: '${greeting()}, ${firstName(s.name)}',
               sub: '${s.homeSite != null ? '${s.homeSite!.code} · ${s.homeSite!.name}' : ''}${d.mess != null ? ' · ${d.mess!.name}' : ''}',
               right: IconBox(icon: 'bell', label: 'Notifications', badge: unread > 0, onTap: () => context.push('/app/notifications'))),
           tabs: tabsFor(s, '/app'),
@@ -186,10 +222,14 @@ class _PlaceHeroState extends State<PlaceHero> {
   @override
   Widget build(BuildContext context) {
     final m = widget.d.mess, meal = widget.meal, w = widget.w, st = widget.st, h = Here.i, hr = hrToday();
-    final ok = _hasPlace && h.state == 'ok';
+    // (25-11-2026, his word: "20 km lamb hoto but app sangat hote 5 km … ekdm perfect") only an EXACT reading (core/geo.dart hereExact)
+    // tells how far the mess is and whether he is at it – a rough one (the towers, no GPS yet) is "finding your exact place"
+    final ok = _hasPlace && h.exact, rough = _hasPlace && h.state == 'ok' && !h.exact;
     final here = ok ? atMess(h.lat, h.lng, h.acc, m!.lat, m.lng, m.radiusM) : null;
     final away = ok ? metres(h.lat, h.lng, m!.lat!, m.lng!) : null;
-    final mode = pick ?? (here == true ? 'mess' : here == false ? 'parcel' : null);
+    // (25-11-2026, his word: "jar mi outside asel mess pasun at the mess option band asel tyala parcel gheyla lagel") outside the mess
+    // area: Parcel only – "At the mess" cannot be chosen
+    final mode = placeMode(pick, here);
     final title = m == null ? 'Your site has no mess yet' : !st.open ? 'No meal open right now' : mode == 'mess' ? '${mealName(meal)} at the mess'
         : mode == 'parcel' ? '${mealName(meal)} parcel to your section' : 'Your $meal is ready to order';
     Widget seg() => Container(
@@ -197,34 +237,22 @@ class _PlaceHeroState extends State<PlaceHero> {
           decoration: BoxDecoration(color: const Color(0xFF1F3354), borderRadius: BorderRadius.circular(14)),
           child: Row(children: [
             for (final (k, l) in const [('mess', 'At the mess'), ('parcel', 'Parcel')])
-              Expanded(child: Semantics(selected: mode == k, button: true, child: GestureDetector(
+              Expanded(child: Semantics(selected: mode == k, button: true, enabled: !(k == 'mess' && here == false), child: GestureDetector(
                 key: Key('home-mode-$k'),
-                onTap: () => setState(() => pick = k),
+                onTap: k == 'mess' && here == false ? null : () => setState(() => pick = k),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(color: mode == k ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(10)),
-                  child: Text(l, style: TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w600, color: mode == k ? C.ink : C.heroSub)),
+                  child: Text(l, style: TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w600,
+                      color: mode == k ? C.ink : k == 'mess' && here == false ? C.heroSub.withValues(alpha: .4) : C.heroSub)),
                 ),
               ))),
           ]),
         );
     return _col([
-      if (hr != null && hr['banner'] == true) ...[
-        FCard(color: C.leafS, border: C.leafS, padding: const EdgeInsets.fromLTRB(14, 10, 6, 10), child: _row([
-          const Ico('shield-check', color: C.leafD),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Signed in through RCL HR', style: T.b.copyWith(fontSize: 14, color: C.leafD)),
-            Text('${widget.s.name}${widget.s.me?['rcl_id'] != null ? ' · ${widget.s.me!['rcl_id']}' : ''} · no code needed again', style: T.xs.copyWith(color: C.leafD)),
-          ])),
-          IconButton(key: const Key('hr-banner-close'), tooltip: 'Close', onPressed: () => setState(closeHrBanner), icon: const Ico('x', size: 18, color: C.leafD)),
-        ], gap: 10)),
-        FCard(child: _col([
-          Text('Comes from HR by itself', style: T.h2),
-          for (final (ic, t) in const [('id-card', 'Name, employee code, site, mobile'), ('user-check', 'Present today (HR attendance)'), ('users', 'New employee or new site in HR – in the mess too')])
-            _row([Ico(ic, size: 16, color: C.muted), Expanded(child: Text(t, style: T.sm)), const Ico('check', size: 16, color: C.leaf)]),
-        ], gap: 10)),
-      ],
+      // (25-11-2026, his word: "signed in through RCL HR as yete te nko yeyla comes from HR by itself he nko yeyla") the two cards of
+      // HR at the top are no more
       Hero2(child: _col([
         _row([
           if (here == true) Chip2('You are at ${m!.name}', icon: 'map-pin', tone: Tone.leaf, height: 26)
@@ -266,8 +294,8 @@ class _PlaceHeroState extends State<PlaceHero> {
                         Text('${distText(away)} away', key: const Key('home-place'), style: T.b), Text('Going to the mess? Meal at the mess comes by itself there.', style: T.xs)])),
                       Btn('Directions', icon: 'navigation', kind: BtnKind.ghost, small: true, expand: false, onTap: () => launchUrl(directionsUrl(m.lat!, m.lng!), mode: LaunchMode.externalApplication)),
                     ], gap: 10))
-              : h.state == 'asking'
-                  ? Text('Finding where you are…', style: T.xs)
+              : h.state == 'asking' || rough
+                  ? Text(rough ? 'Finding your exact place… (± ${distText(h.acc.round())} – go into the open)' : 'Finding where you are…', key: const Key('home-finding'), style: T.xs)
                   : _row([
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('Location is off', key: const Key('home-place'), style: T.b), Text('Turn it on – the app then chooses "At the mess" or "Parcel" by itself.', style: T.xs)])),
@@ -502,13 +530,15 @@ class _ParcelState extends State<Parcel> with Act {
         final byHand = secs.where((r) => r['id'] == pickedSection).firstOrNull;
         final usualId = visit?['section_id'] as String? ?? s.me?['home_section_id'] as String?;
         final usual = secs.where((r) => r['id'] == usualId).firstOrNull;
-        final found = h.state == 'ok' ? sectionAt(h.lat, h.lng, secs) : null;
+        // (25-11-2026) only an EXACT reading finds his section or is sent as the van's place (a rough one can be kilometres off)
+        final found = h.exact ? sectionAt(h.lat, h.lng, secs) : null;
         // where the van goes: (section, a point outside the sections, why, still finding)
         final (Rec? sec, bool point, String why, bool asking) = byHand != null ? (byHand, false, 'chosen by you', false)
-            : h.state == 'ok' ? (found != null ? (found, false, 'found by your location', false) : (null, true, 'outside the sections', false))
-            : h.state == 'asking' ? (null, false, '', true)
+            : h.exact ? (found != null ? (found, false, 'found by your location', false) : (null, true, 'outside the sections', false))
+            : h.state == 'asking' || h.state == 'ok' ? (null, false, '', true)
             : usual != null ? (usual, false, 'your work place', false) : (null, false, '', false);
         final away = point && d.mess?.lat != null && d.mess?.lng != null ? metres(h.lat, h.lng, d.mess!.lat!, d.mess!.lng!) : null;
+        final outside = h.exact && d.mess?.lat != null && d.mess?.lng != null && atMess(h.lat, h.lng, h.acc, d.mess!.lat, d.mess!.lng, d.mess!.radiusM) == false;
         final mealItem = its.where((i) => i['kind'] == 'meal' && i['meal'] == m).firstOrNull;
         final extras = its.where((i) => i['kind'] == 'extra').toList();
         final n = extra.values.fold<int>(0, (a, b) => a + b);
@@ -516,7 +546,7 @@ class _ParcelState extends State<Parcel> with Act {
               if (how == 'delivery' && sec == null && !point) throw DbError('Choose where to deliver.');
               final lines = [{'item': mealItem!['code']}, for (final e in extra.entries) if (e.value > 0) {'item': e.key, 'qty': e.value}];
               // the location decides on the server (the same rule): his point is sent; a section by hand / his work place: the section
-              final byPoint = how == 'delivery' && byHand == null && h.state == 'ok';
+              final byPoint = how == 'delivery' && byHand == null && h.exact;
               final r = await call<dynamic>('request_order', {'p_mess': d.mess!.id, 'p_date': today(), 'p_meal': m, 'p_kind': how, 'p_lines': lines,
                 'p_section': how == 'delivery' && !byPoint ? sec!['id'] : null, 'p_note': note.text.trim().isEmpty ? null : note.text.trim(), 'p_visit': visit?['id'],
                 'p_lat': byPoint ? double.parse(h.lat.toStringAsFixed(6)) : null, 'p_lng': byPoint ? double.parse(h.lng.toStringAsFixed(6)) : null});
@@ -531,7 +561,9 @@ class _ParcelState extends State<Parcel> with Act {
             Btn('Ask for the parcel', icon: 'package-check', kind: BtnKind.sf, busy: busy, onTap: !st.open || mealItem == null || d.mess == null || (how == 'delivery' && asking) ? null : ask),
           ]),
           children: [
-            Seg(items: const [('meal', 'At the mess'), ('parcel', 'Parcel to my site')], value: 'parcel', onChanged: (v) { if (v == 'meal') context.go('/app/meal'); }),
+            // (25-11-2026) outside the mess area (an exact reading): "At the mess" cannot be chosen – Parcel only
+            Seg(items: const [('meal', 'At the mess'), ('parcel', 'Parcel to my site')], value: 'parcel',
+                off: outside ? const {'meal'} : const {}, onChanged: (v) { if (v == 'meal') context.go('/app/meal'); }),
             Wrap2([for (final xm in meals) Chip2(mealName(xm), tone: xm == m ? Tone.on : Tone.plain, onTap: () => setState(() => meal = xm))], gap: 6),
             if (how == 'delivery')
               FCard(key: const Key('deliver-to'), onTap: () async { await context.push('/app/section'); if (mounted) setState(() {}); }, child: _row([

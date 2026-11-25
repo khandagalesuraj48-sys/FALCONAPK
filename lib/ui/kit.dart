@@ -251,11 +251,13 @@ class Btn extends StatelessWidget {
 
 /// A segmented choice (.seg).
 class Seg extends StatelessWidget {
-  const Seg({super.key, required this.items, required this.value, required this.onChanged, this.dark = false});
+  const Seg({super.key, required this.items, required this.value, required this.onChanged, this.dark = false, this.off = const {}});
   final List<(String, String)> items; // (value, label)
   final String value;
   final ValueChanged<String> onChanged;
   final bool dark;
+  /// (25-11-2026) the values that cannot be chosen now – shown dim, a touch does nothing
+  final Set<String> off;
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -265,7 +267,8 @@ class Seg extends StatelessWidget {
         for (final it in items)
           Expanded(
             child: GestureDetector(
-              onTap: () => onChanged(it.$1),
+              key: Key('seg-${it.$1}'),
+              onTap: off.contains(it.$1) ? null : () => onChanged(it.$1),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 160),
                 padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
@@ -278,7 +281,7 @@ class Seg extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Text(it.$2, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w600,
-                        color: it.$1 == value ? (dark ? Colors.white : C.ink) : (dark ? C.darkSub : C.muted))),
+                        color: it.$1 == value ? (dark ? Colors.white : C.ink) : off.contains(it.$1) ? (dark ? C.darkSub : C.muted).withValues(alpha: .4) : (dark ? C.darkSub : C.muted))),
               ),
             ),
           ),

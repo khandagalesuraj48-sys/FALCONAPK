@@ -54,11 +54,27 @@ LocationSettings hereSettings(bool android) => android
     ? AndroidSettings(accuracy: LocationAccuracy.high, distanceFilter: 5, intervalDuration: const Duration(seconds: 1), maxUpdateAge: const Duration(seconds: 15))
     : const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5);
 
+/// (25-11-2026) the one reading asked for at once, apart from the stream: Android – every second, the phone's reading of the last 15 s
+/// at once (Android 13+); within 10 s.
+LocationSettings hereOnce(bool android) => android
+    ? AndroidSettings(accuracy: LocationAccuracy.high, intervalDuration: const Duration(seconds: 1), maxUpdateAge: const Duration(seconds: 15), timeLimit: const Duration(seconds: 10))
+    : const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 10));
+
+/// A new reading of [acc] m is taken – unless the one there is exact ([wasExact]) and of the last 30 s ([at]) and the new one is not exact.
+bool hereTakes(bool wasExact, DateTime at, double acc, DateTime now) =>
+    !wasExact || (acc >= 0 && acc <= hereExact) || now.difference(at) > const Duration(seconds: 30);
+
 /// A reading of the phone [at] is of the last 15 s by the phone's clock [now] (ahead of the clock by more than 2 s: no).
 bool hereYoung(DateTime at, DateTime now) {
   final a = now.difference(at);
   return a >= const Duration(seconds: -2) && a <= const Duration(seconds: 15);
 }
+
+/// (25-11-2026, his word: "kal pahile mess pasun 20 km lamb hoto but app sangat hote 5 km lamb ahe … refresh … band krun chalu kel tri
+/// 5 km … ekdm perfect") A reading is EXACT when the phone says it is within this many metres – a reading by the mobile towers alone
+/// (indoors, no GPS yet) can be kilometres off, and it gave a wrong distance. Only an exact reading tells how far the mess is, whether
+/// he is at it, which section he is in and where the van goes; a rough one only says "finding your exact place (± …)".
+const hereExact = 100.0;
 
 /// The phone's place while a screen listens: 'asking' → 'ok' (lat, lng, acc) or 'off' (switched off / refused).
 class Here extends ChangeNotifier {
@@ -66,6 +82,10 @@ class Here extends ChangeNotifier {
   static final Here i = Here._();
   String state = 'asking';
   double lat = 0, lng = 0, acc = 0;
+  DateTime _at = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// (25-11-2026) the reading is exact (within [hereExact] m) – only then a distance, "at the mess" or a place for the van
+  bool get exact => state == 'ok' && acc >= 0 && acc <= hereExact;
   StreamSubscription<Position>? _sub;
   int _users = 0;
 
@@ -101,16 +121,22 @@ class Here extends ChangeNotifier {
       } catch (_) {/* this phone gives none: the readings below */}
       await _sub?.cancel();
       _sub = Geolocator.getPositionStream(locationSettings: hereSettings(Platform.isAndroid)).listen(_take, onError: (_) => _off());
+      // (25-11-2026, "falcon madhe pn location fetch 1 second madhe hoyla hawey") one reading of its own as well, at once: inside RCL's
+      // ERP / HR app the phone's stream of places may be the one of the HR tracking (a point in minutes) – this one does not wait for it
+      unawaited(Geolocator.getCurrentPosition(locationSettings: hereOnce(Platform.isAndroid)).then(_take, onError: (Object _) {}));
     } catch (_) {
       _off();
     }
   }
 
   void _take(Position pos) {
+    // (25-11-2026) a rough reading does not push out an exact one of the last 30 s (the phone gives a tower's reading now and then)
+    if (!hereTakes(exact, _at, pos.accuracy, DateTime.now())) return;
     state = 'ok';
     lat = pos.latitude;
     lng = pos.longitude;
     acc = pos.accuracy;
+    _at = DateTime.now();
     notifyListeners();
   }
 
