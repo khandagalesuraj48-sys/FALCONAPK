@@ -4,6 +4,7 @@
 // order (Wolf part 0017, his word: "only section … section che baheun koni kel asel tr … location direction he sagle hot jail"): the
 // server finds the section whose area holds it, and keeps the point with that order only when it is inside no section.
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -46,6 +47,19 @@ Map<String, dynamic>? sectionAt(double lat, double lng, List<Map<String, dynamic
 /// Google Maps' own directions page – the Maps app on the phone; only the point it goes to is in it.
 Uri directionsUrl(double lat, double lng) => Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}');
 
+/// (25-11-2026, his word: "location fetching la time ghetey location on asla tri sudha he khup fast hoyla haw") the place is asked
+/// EVERY SECOND on Android (the plugin asked once in 5 s when no interval was given), and the phone may give its reading of the last
+/// 15 s at once (Android 13+); elsewhere as before. The same as RCL's ERP / HR app (its lib/core/gps_fast.dart).
+LocationSettings hereSettings(bool android) => android
+    ? AndroidSettings(accuracy: LocationAccuracy.high, distanceFilter: 5, intervalDuration: const Duration(seconds: 1), maxUpdateAge: const Duration(seconds: 15))
+    : const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5);
+
+/// A reading of the phone [at] is of the last 15 s by the phone's clock [now] (ahead of the clock by more than 2 s: no).
+bool hereYoung(DateTime at, DateTime now) {
+  final a = now.difference(at);
+  return a >= const Duration(seconds: -2) && a <= const Duration(seconds: 15);
+}
+
 /// The phone's place while a screen listens: 'asking' → 'ok' (lat, lng, acc) or 'off' (switched off / refused).
 class Here extends ChangeNotifier {
   Here._();
@@ -80,17 +94,24 @@ class Here extends ChangeNotifier {
       var p = await Geolocator.checkPermission();
       if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
       if (p == LocationPermission.denied || p == LocationPermission.deniedForever) return _off();
+      // (25-11-2026) the phone's own reading of the last 15 s is shown at once – the new ones follow
+      try {
+        final l = await Geolocator.getLastKnownPosition();
+        if (l != null && hereYoung(l.timestamp, DateTime.now())) _take(l);
+      } catch (_) {/* this phone gives none: the readings below */}
       await _sub?.cancel();
-      _sub = Geolocator.getPositionStream(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5)).listen((pos) {
-        state = 'ok';
-        lat = pos.latitude;
-        lng = pos.longitude;
-        acc = pos.accuracy;
-        notifyListeners();
-      }, onError: (_) => _off());
+      _sub = Geolocator.getPositionStream(locationSettings: hereSettings(Platform.isAndroid)).listen(_take, onError: (_) => _off());
     } catch (_) {
       _off();
     }
+  }
+
+  void _take(Position pos) {
+    state = 'ok';
+    lat = pos.latitude;
+    lng = pos.longitude;
+    acc = pos.accuracy;
+    notifyListeners();
   }
 
   void _off() {

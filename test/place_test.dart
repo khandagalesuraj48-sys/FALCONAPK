@@ -4,6 +4,7 @@ import 'package:falcon/core/geo.dart';
 import 'package:falcon/core/meals.dart';
 import 'package:falcon/screens/from_hr.dart' show passShape;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 
 void main() {
   test('at the mess: inside its metres, the phone\'s uncertainty counted up to 50 m; a mess without a place: not known', () {
@@ -39,5 +40,13 @@ void main() {
     for (final bad in ['', 'v2.x.${'A' * 43}', 'v1.eyJ.short', 'v1.a b.${'A' * 43}']) {
       expect(passShape.hasMatch(bad), isFalse, reason: bad);
     }
+  });
+  test('(25-11-2026, "location fetching … khup fast") the place: asked every second on Android, a reading of the last 15 s at once', () {
+    final a = hereSettings(true) as AndroidSettings;
+    expect([a.accuracy, a.distanceFilter, a.intervalDuration, a.maxUpdateAge], [LocationAccuracy.high, 5, const Duration(seconds: 1), const Duration(seconds: 15)]);
+    final o = hereSettings(false);
+    expect([o is AndroidSettings, o.accuracy, o.distanceFilter], [false, LocationAccuracy.high, 5]);
+    final now = DateTime.utc(2026, 11, 25, 5);
+    expect([for (final s in [-3, -1, 0, 10, 15, 16, 60]) hereYoung(now.add(Duration(seconds: -s)), now)], [false, true, true, true, true, false, false]);
   });
 }
