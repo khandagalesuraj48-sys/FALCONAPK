@@ -23,11 +23,12 @@ void main() {
     return done;
   }
 
+  // the app goes to WhatsApp and comes back – through the states Flutter allows, one by one
   Future<void> wentAwayAndBack(WidgetTester t) async {
-    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    await t.pump();
-    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await t.pump();
+    for (final st in const [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused, AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      t.binding.handleAppLifecycleStateChanged(st);
+      await t.pump();
+    }
     await t.pump();
   }
 
