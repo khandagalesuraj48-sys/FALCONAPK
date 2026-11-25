@@ -37,6 +37,9 @@ timeout 300 flutter test
 * **The mess home** reads the phone's place while it is open (`lib/core/geo.dart` – nothing is saved or sent): inside the mess's
   area → "At the mess" and the counter QR; away → how far (a straight line), **Directions** (Google Maps), "Parcel". He can switch.
   The meal follows the **server's clock** (`lib/core/clock.dart`: GET `/api/start`, then every 10 minutes).
+  (25-11-2026, his word: "location fetching la time ghetey … khup fast hoyla haw") the place comes fast: the phone's own reading of the
+  last 15 s is shown at once, then the place is asked every second on Android (it was once in 5 s); on Android 13+ the phone may give
+  its reading of the last 15 s at once. The same in RCL's ERP / HR app, which has this code inside (its `pubspec.yaml` pin).
 * **Google Map** (`lib/ui/gmap.dart`) on the home, tracking, the driver's route, the owner's route and live vans, choosing a section.
   The key is the ERP's own, given at the build: GitHub → FALCONAPK → Settings → Secrets → Actions → **`MAPS_API_KEY`** (the same
   value as the ERP app's secret – never in a file or in chat). Without it, or without places: the drawn road of before.
