@@ -1,5 +1,6 @@
 // The approved look's building blocks for the phone (the designs' .scr, .top, .card, .chip, .btn, .tabs, .sheet, .tl …) – each
 // screen is built from these, like the web's src/ui/kit.tsx.
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -533,47 +534,140 @@ class Input extends StatelessWidget {
 }
 
 /// The six boxes of a code.
+/// (25-11-2026, his word: "otp whats app la yeto mi whats app war jaun copy krun alo ki ekde falcon madhe otp taku det nahi screen la touch
+/// kel tr otp box madhe kahi jat nahi") – as the ERP app's sign-in (its lib/ui/code_boxes.dart, 3.166.0):
+///   • the one real box lies OVER the six boxes – a touch on them reaches it and opens the keyboard again, also after WhatsApp
+///     (before, a touch only asked for the focus the box still had – the keyboard did not come back);
+///   • back from WhatsApp (where he tapped "Copy code"): the code copied fills the boxes by itself and is checked ([paste], Android
+///     only – an iPhone asks "Allow Paste?" for every look at the clipboard), never the same code twice; else the keyboard comes again;
+///   • "Paste code": a code copied anywhere (the six digits in a message) goes in.
+/// [paste] false (the code a guest says to the employee): no "Paste code", nothing taken from the clipboard by itself.
 class CodeBoxes extends StatefulWidget {
-  const CodeBoxes({super.key, required this.onDone, this.length = 6, this.dark = false});
+  const CodeBoxes({super.key, required this.onDone, this.length = 6, this.dark = false, this.paste = true});
   final ValueChanged<String> onDone;
   final int length;
   final bool dark;
+  final bool paste;
   @override
   State<CodeBoxes> createState() => _CodeBoxesState();
 }
 
-class _CodeBoxesState extends State<CodeBoxes> {
+class _CodeBoxesState extends State<CodeBoxes> with WidgetsBindingObserver {
   final _c = TextEditingController();
   final _f = FocusNode();
+  String _pasted = '';
+
   @override
-  void dispose() { _c.dispose(); _f.dispose(); super.dispose(); }
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _f.addListener(_redraw);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _f.removeListener(_redraw);
+    _c.dispose();
+    _f.dispose();
+    super.dispose();
+  }
+
+  void _redraw() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _back();
+  }
+
+  /// Back in the app (from WhatsApp): the code copied there, else the keyboard again.
+  Future<void> _back() async {
+    if (!mounted || _c.text.length >= widget.length) return;
+    if (widget.paste && _c.text.isEmpty && defaultTargetPlatform == TargetPlatform.android && await paste(auto: true)) return;
+    if (mounted) _keyboard();
+  }
+
+  void _keyboard() {
+    if (_f.hasFocus) {
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    } else {
+      _f.requestFocus();
+    }
+  }
+
+  void _typed(String x) {
+    setState(() {});
+    if (x.length == widget.length) widget.onDone(x);
+  }
+
+  /// A code from the clipboard into the boxes – by itself ([auto]) only a copied code alone (WhatsApp's "Copy code" copies just the
+  /// six digits) and never the same one twice; "Paste code": the first six digits standing alone in what was copied. true = put in.
+  Future<bool> paste({bool auto = false}) async {
+    var t = '';
+    try {
+      t = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+    } catch (_) {/* nothing on the clipboard to read */}
+    if (!mounted) return false;
+    final n = widget.length;
+    final d = auto ? (RegExp('^\\s*(\\d{$n})\\s*\$').firstMatch(t)?.group(1) ?? '') : (RegExp('(?<!\\d)\\d{$n}(?!\\d)').firstMatch(t)?.group(0) ?? '');
+    if (d.isEmpty || (auto && d == _pasted)) {
+      if (!auto) _keyboard();
+      return false;
+    }
+    _pasted = d;
+    _c.value = TextEditingValue(text: d, selection: TextSelection.collapsed(offset: d.length));
+    _typed(d);
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final v = _c.text;
-    return GestureDetector(
-      onTap: () => _f.requestFocus(),
-      child: Stack(children: [
-        Opacity(opacity: 0, child: SizedBox(height: 1, child: TextField(controller: _c, focusNode: _f, autofocus: true, keyboardType: TextInputType.number,
-            maxLength: widget.length, autofillHints: const [AutofillHints.oneTimeCode],
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            onChanged: (x) { setState(() {}); if (x.length == widget.length) widget.onDone(x); }))),
-        Row(children: [
-          for (var i = 0; i < widget.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(child: Container(
-              height: 56,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: widget.dark ? C.navy2 : Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: i == v.length ? C.leaf : (widget.dark ? C.navy3 : C.line2), width: i == v.length ? 1.6 : 1),
-              ),
-              child: Text(i < v.length ? v[i] : '', style: TextStyle(fontFamily: font, fontSize: 24, fontWeight: FontWeight.w700, color: widget.dark ? Colors.white : C.ink)),
-            )),
-          ],
-        ]),
+    final boxes = Stack(children: [
+      Row(children: [
+        for (var i = 0; i < widget.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: Container(
+            height: 56,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: widget.dark ? C.navy2 : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: i == v.length ? C.leaf : (widget.dark ? C.navy3 : C.line2), width: i == v.length ? 1.6 : 1),
+            ),
+            child: Text(i < v.length ? v[i] : '', style: TextStyle(fontFamily: font, fontSize: 24, fontWeight: FontWeight.w700, color: widget.dark ? Colors.white : C.ink)),
+          )),
+        ],
       ]),
-    );
+      // the one real box, over the six: what is typed, pasted or filled by the keyboard (its suggestion of a copied code); shows nothing
+      Positioned.fill(
+        child: Opacity(
+          opacity: 0.011,
+          child: TextField(
+            key: const Key('code-field'),
+            controller: _c,
+            focusNode: _f,
+            autofocus: true,
+            showCursor: false,
+            enableInteractiveSelection: false,
+            keyboardType: TextInputType.number,
+            autofillHints: const [AutofillHints.oneTimeCode],
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(widget.length)],
+            style: const TextStyle(fontSize: 1, color: Colors.transparent, height: 1),
+            decoration: const InputDecoration(border: InputBorder.none, counterText: '', contentPadding: EdgeInsets.symmetric(vertical: 24)),
+            onChanged: _typed,
+          ),
+        ),
+      ),
+    ]);
+    if (!widget.paste) return boxes;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      boxes,
+      const SizedBox(height: 8),
+      Align(alignment: Alignment.centerRight, child: Chip2('Paste code', key: const Key('code-paste'), dark: widget.dark, onTap: () => paste())),
+    ]);
   }
 }
 
