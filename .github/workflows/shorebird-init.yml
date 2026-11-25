@@ -1,0 +1,56 @@
+# (25-11-2026, his word: "falcon pn same updet system banwychi aahe" – Shorebird, like the ERP app) ONCE: adds FALCON to Shorebird
+# (organization "Sketchline") – `shorebird init` makes the app there and writes shorebird.yaml (the app's Shorebird id – not a secret,
+# it is inside every app). This run only SHOWS it: nothing is committed, built, signed, released or sent to a phone. It runs when this
+# branch is pushed (no merge needed for a run that changes nothing); the id then comes in the pull request of the Shorebird build.
+# Key: the repository secret SHOREBIRD_TOKEN (set by him) – never printed.
+name: Shorebird – add FALCON (once)
+on:
+  push:
+    branches: [shorebird-init]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: The key is there
+        run: |
+          if [ -z "$SHOREBIRD_TOKEN" ]; then echo "::error::The repository secret SHOREBIRD_TOKEN is not set (Settings → Secrets and variables → Actions)."; exit 1; fi
+          if [ -f shorebird.yaml ]; then echo "::notice::shorebird.yaml is already in the repository – FALCON was added before."; cat shorebird.yaml; fi
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.1
+          cache: true
+      - name: Packages
+        run: flutter pub get
+      - name: Gradle files only (no build)
+        run: flutter build apk --config-only
+      - uses: shorebirdtech/setup-shorebird@v1
+        with:
+          cache: true
+      - name: shorebird init
+        run: |
+          if [ -f shorebird.yaml ]; then exit 0; fi
+          shorebird init --force --display-name "FALCON"
+          echo "----- shorebird.yaml"; cat shorebird.yaml
+          echo "----- what changed"; git --no-pager status --short; git --no-pager diff -- . ':!pubspec.lock' | tee init.diff
+          APP=$(grep '^app_id:' shorebird.yaml | sed 's/app_id: *//'); echo "::notice::FALCON's Shorebird app_id: $APP"
+      - name: Keep the result (Artifacts → shorebird-init)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shorebird-init
+          path: |
+            shorebird.yaml
+            init.diff
+          if-no-files-found: ignore
