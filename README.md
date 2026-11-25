@@ -47,6 +47,13 @@ timeout 300 flutter analyze --no-fatal-infos
 timeout 300 flutter test
 ```
 
+## The distance by road (25-11-2026)
+
+His word, with FALCON's "5.9 km away" and Google Maps' 12 km: "app ase ase fake imformation denare tr kahich thik nahi chalnar". Both points
+were right – the app showed the straight line. Every distance to the mess / a delivery point is now **by road** (`lib/core/road.dart` → the
+web's server step `/api/route`, Google's Routes API, the key `GOOGLE_ROUTES_KEY` only in Vercel): "12 km by road · 30 min"; until the road
+is there – or without the key – "5.9 km in a straight line". The home, the Parcel page and the kitchen's three places of a delivery point.
+
 ## The place exact and at once · Parcel only outside the mess · Google's map · opened from the ERP / HR app at once (25-11-2026)
 
 His words: "falcon madhe pn location fetch 1 second madhe hoyla hawey"; "jar mi outside asel mess pasun at the mess option band asel tyala

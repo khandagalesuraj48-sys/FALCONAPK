@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/db.dart';
 import '../core/fmt.dart';
 import '../core/geo.dart';
+import '../core/road.dart';
 import '../core/meals.dart';
 import '../core/session.dart';
 import '../ui/kit.dart';
@@ -32,9 +33,13 @@ Rec? secOf(Rec o) => o['section'] is Map ? Map<String, dynamic>.from(o['section'
 // to a section or – asked from outside every section – to the person's location: how far it is from the mess and Google's directions.
 Rec? pointOf(Rec o) => o['point'] is Map ? Map<String, dynamic>.from(o['point'] as Map) : null;
 String? whereOf(Rec o) => secOf(o)?['code'] as String? ?? (pointOf(o) != null ? 'Location' : null);
+/// (25-11-2026, his word: FALCON said 5.9 km, Google Maps 12 km – "fake imformation") how far BY ROAD from the mess (core/road.dart) –
+/// the straight line only until the road is there, said as one. A text using it is drawn again when the road comes (Roads.i).
 String? farOf(Rec o, OwnerMess m) {
   final p = pointOf(o);
-  return p == null || m.lat == null || m.lng == null ? null : distText(metres(m.lat!, m.lng!, toD(p['lat']), toD(p['lng'])));
+  if (p == null || m.lat == null || m.lng == null) return null;
+  final lat = toD(p['lat']), lng = toD(p['lng']);
+  return roadLabel(Roads.i.of(m.lat!, m.lng!, lat, lng), metres(m.lat!, m.lng!, lat, lng));
 }
 Widget directions(double lat, double lng, {String label = 'Directions'}) =>
     Chip2(label, icon: 'navigation', height: 28, onTap: () => launchUrl(directionsUrl(lat, lng), mode: LaunchMode.externalApplication));
@@ -181,7 +186,7 @@ class Requests extends StatefulWidget {
   State<Requests> createState() => _RequestsState();
 }
 
-class _RequestsState extends State<Requests> with Act {
+class _RequestsState extends State<Requests> with Act, RoadsRedraw {
   String by = 'section';
   @override
   Widget build(BuildContext context) => _WithMess<(List<Win>, List<Rec>)>(
@@ -250,7 +255,7 @@ class RequestDetail extends StatefulWidget {
   State<RequestDetail> createState() => _RequestDetailState();
 }
 
-class _RequestDetailState extends State<RequestDetail> with Act {
+class _RequestDetailState extends State<RequestDetail> with Act, RoadsRedraw {
   final reason = TextEditingController();
   @override
   void dispose() { reason.dispose(); super.dispose(); }
@@ -396,7 +401,7 @@ class Parcels extends StatefulWidget {
   State<Parcels> createState() => _ParcelsState();
 }
 
-class _ParcelsState extends State<Parcels> with Act {
+class _ParcelsState extends State<Parcels> with Act, RoadsRedraw {
   final left = <String, bool>{};
   static const _bg = [C.leafS, C.blueS, C.sfS, C.plumS], _dot = [C.leaf, C.blue, C.saffron, C.plumD];
   @override
