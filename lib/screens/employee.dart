@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/db.dart';
 import '../core/fmt.dart';
 import '../core/geo.dart';
+import '../core/road.dart';
 import '../core/meals.dart';
 import '../core/prefs.dart';
 import '../core/session.dart';
@@ -205,6 +206,7 @@ class _PlaceHeroState extends State<PlaceHero> {
   void initState() {
     super.initState();
     Here.i.addListener(_moved);
+    Roads.i.addListener(_moved);
     if (_hasPlace) Here.i.use();
   }
 
@@ -215,6 +217,7 @@ class _PlaceHeroState extends State<PlaceHero> {
   @override
   void dispose() {
     Here.i.removeListener(_moved);
+    Roads.i.removeListener(_moved);
     if (_hasPlace) Here.i.done();
     super.dispose();
   }
@@ -227,6 +230,8 @@ class _PlaceHeroState extends State<PlaceHero> {
     final ok = _hasPlace && h.exact, rough = _hasPlace && h.state == 'ok' && !h.exact;
     final here = ok ? atMess(h.lat, h.lng, h.acc, m!.lat, m.lng, m.radiusM) : null;
     final away = ok ? metres(h.lat, h.lng, m!.lat!, m.lng!) : null;
+    // (25-11-2026, his word: FALCON said 5.9 km, Google Maps 12 km – "fake imformation") how far BY ROAD (core/road.dart)
+    final road = ok ? Roads.i.of(h.lat, h.lng, m!.lat!, m.lng!) : null;
     // (25-11-2026, his word: "jar mi outside asel mess pasun at the mess option band asel tyala parcel gheyla lagel") outside the mess
     // area: Parcel only – "At the mess" cannot be chosen
     final mode = placeMode(pick, here);
@@ -256,7 +261,7 @@ class _PlaceHeroState extends State<PlaceHero> {
       Hero2(child: _col([
         _row([
           if (here == true) Chip2('You are at ${m!.name}', icon: 'map-pin', tone: Tone.leaf, height: 26)
-          else if (here == false && away != null) Chip2('${distText(away)} from ${m!.name}', icon: 'route', tone: Tone.sf, height: 26)
+          else if (here == false && away != null) Chip2('${roadShort(road, away)} from ${m!.name}', icon: 'route', tone: Tone.sf, height: 26)
           else Chip2('${mealName(meal)} · ${st.open ? 'open ${st.label}' : st.label}', tone: Tone.sf, height: 26),
           const Spacer(),
           Text(mode != null ? nowHM() : dayLong(today()), style: T.xs.copyWith(color: C.heroSub)),
@@ -291,7 +296,7 @@ class _PlaceHeroState extends State<PlaceHero> {
                       Text('Inside the mess area', key: const Key('home-place'), style: T.b), Text('${distText(away)} from the mess · by your phone\'s location', style: T.xs)]))], gap: 12)
                   : _row([
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('${distText(away)} away', key: const Key('home-place'), style: T.b), Text('Going to the mess? Meal at the mess comes by itself there.', style: T.xs)])),
+                        Text(roadLabel(road, away), key: const Key('home-place'), style: T.b), Text('Going to the mess? Meal at the mess comes by itself there.', style: T.xs)])),
                       Btn('Directions', icon: 'navigation', kind: BtnKind.ghost, small: true, expand: false, onTap: () => launchUrl(directionsUrl(m.lat!, m.lng!), mode: LaunchMode.externalApplication)),
                     ], gap: 10))
               : h.state == 'asking' || rough
@@ -496,6 +501,7 @@ class _ParcelState extends State<Parcel> with Act {
   void initState() {
     super.initState();
     Here.i.addListener(_moved);
+    Roads.i.addListener(_moved);
     Here.i.use();
   }
 
@@ -506,6 +512,7 @@ class _ParcelState extends State<Parcel> with Act {
   @override
   void dispose() {
     Here.i.removeListener(_moved);
+    Roads.i.removeListener(_moved);
     Here.i.done();
     note.dispose();
     super.dispose();
@@ -538,6 +545,8 @@ class _ParcelState extends State<Parcel> with Act {
             : h.state == 'asking' || h.state == 'ok' ? (null, false, '', true)
             : usual != null ? (usual, false, 'your work place', false) : (null, false, '', false);
         final away = point && d.mess?.lat != null && d.mess?.lng != null ? metres(h.lat, h.lng, d.mess!.lat!, d.mess!.lng!) : null;
+        // (25-11-2026) the van's way BY ROAD from the mess (core/road.dart) – the straight line only until it is there, said as one
+        final road = away != null ? Roads.i.of(d.mess!.lat!, d.mess!.lng!, h.lat, h.lng) : null;
         final outside = h.exact && d.mess?.lat != null && d.mess?.lng != null && atMess(h.lat, h.lng, h.acc, d.mess!.lat, d.mess!.lng, d.mess!.radiusM) == false;
         final mealItem = its.where((i) => i['kind'] == 'meal' && i['meal'] == m).firstOrNull;
         final extras = its.where((i) => i['kind'] == 'extra').toList();
@@ -572,7 +581,7 @@ class _ParcelState extends State<Parcel> with Act {
                   Text('Deliver to${why.isNotEmpty ? ' · $why' : ''}', style: T.xs),
                   Text(sec != null ? 'Section ${sec['code']}$name' : point ? 'Your location' : asking ? 'Finding where you are…' : 'Choose the section', style: T.b),
                   Text(sec != null ? [if (sec['km'] != null) 'Km ${sec['km']}', if (sec['place'] != null) '${sec['place']}'].join(' · ')
-                      : point ? '${away != null ? '${distText(away)} from the mess · ' : ''}the van brings it here' : h.state == 'off' ? 'Location is off – choose the section' : ' ', style: T.sm),
+                      : point ? '${away != null ? '${roadLabel(road, away)} from the mess · ' : ''}the van brings it here' : h.state == 'off' ? 'Location is off – choose the section' : ' ', style: T.sm),
                 ])),
                 Text('Change', style: T.sm.copyWith(color: C.leafD, fontWeight: FontWeight.w600)),
               ], gap: 12)),
