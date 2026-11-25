@@ -14,12 +14,14 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
 import 'config.dart';
 import 'core/clock.dart';
 import 'core/db.dart' show sb;
+import 'core/net.dart' show startNet, supabaseHttp;
 import 'core/prefs.dart';
 import 'core/session.dart';
 import 'routes.dart';
 import 'screens/employee.dart' show homeData;
 import 'screens/from_hr.dart' show passShape, signInFromHr;
 import 'ui/look.dart';
+import 'ui/net.dart' show NetHost;
 
 /// true while FALCON runs inside another app – its pictures are then read from this package's files, the "back to the app"
 /// line is shown on FALCON's home pages, and FALCON's own sign-up pages are not offered.
@@ -47,7 +49,10 @@ bool get falconReady => Config.ready;
 Future<void> falconStart() async {
   falconEmbedded = true;
   if (_started) return;
-  if (Config.ready) await Supabase.initialize(url: Config.supabaseUrl, anonKey: Config.supabaseKey);
+  if (Config.ready) {
+    await Supabase.initialize(url: Config.supabaseUrl, anonKey: Config.supabaseKey, httpClient: supabaseHttp()); // (SNI) measured
+    startNet();
+  }
   await Prefs.init();
   keepClock();
   _session = Session()..start();
@@ -145,6 +150,7 @@ class _FalconInAppState extends State<FalconInApp> {
           debugShowCheckedModeBanner: false,
           theme: falconTheme(),
           routerConfig: router,
+          builder: (context, child) => NetHost(child: child ?? const SizedBox()), // (SNI)
         ),
       ),
     );

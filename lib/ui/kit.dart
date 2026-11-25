@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../embed.dart';
 import 'look.dart';
+import 'net.dart';
 
 /// A phone screen: cream (or the dark navy of the driver's app), the top bar, the body that scrolls, an optional foot and tab bar.
 class Screen extends StatelessWidget {
@@ -38,6 +39,7 @@ class Screen extends StatelessWidget {
               Column(children: [
                 if (_home(context)) LeaveLine(dark: dark),
                 ?top,
+                const NetLine(), // (25-11-2026 – SNI picture 4) slow / reconnecting / server down / no internet – only then
                 Expanded(child: body),
                 if (foot != null) foot!,
               ]),
@@ -91,7 +93,10 @@ class Top extends StatelessWidget {
             if (sub != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(sub!, style: T.sm.copyWith(color: dark ? C.darkSub : C.muted), maxLines: 2, overflow: TextOverflow.ellipsis)),
           ]),
         ),
-        if (right != null) ...[const SizedBox(width: 12), right!],
+        // (25-11-2026 – SNI picture 2) the network's chip in every top bar
+        const SizedBox(width: 10),
+        NetChip(dark: dark),
+        if (right != null) ...[const SizedBox(width: 10), right!],
       ]),
     );
   }

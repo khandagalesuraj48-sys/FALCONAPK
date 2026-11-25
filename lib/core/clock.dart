@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import 'fmt.dart';
+import 'net.dart' show netHttp;
 
 Future<void> syncClock({http.Client? client}) async {
   try {
@@ -20,6 +21,7 @@ Future<void> syncClock({http.Client? client}) async {
 
 Timer? _every;
 void keepClock() {
-  unawaited(syncClock());
-  _every ??= Timer.periodic(const Duration(minutes: 10), (_) => unawaited(syncClock()));
+  // (25-11-2026 – SNI) its answer is measured too (core/net.dart)
+  unawaited(syncClock(client: netHttp));
+  _every ??= Timer.periodic(const Duration(minutes: 10), (_) => unawaited(syncClock(client: netHttp)));
 }

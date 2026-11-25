@@ -47,6 +47,17 @@ timeout 300 flutter analyze --no-fatal-infos
 timeout 300 flutter test
 ```
 
+## The network, as measured – SNI (25-11-2026 – his approval of the SNI pictures: "he sagle tu dilel screen pn ok aahet asch banaw")
+
+The same as the ERP app's (rcl-mobile `core/net.dart`): ONE monitor (`lib/core/net.dart`) fed only by the app's own requests –
+Supabase's (its client, `Supabase.initialize(httpClient:)`), FALCON's server steps (`api()`, the clock) and the live updates' own
+heartbeat (every 25 s while a live screen is open). The rules: the last 10 answers of the last 2 minutes – middle time under 800 ms
+GOOD, 800 ms or more (or one over 5 s) WEAK, 2 failures UNSTABLE; no answer → RECONNECTING while Android's own check
+(connectivitycheck.gstatic.com/generate_204) is asked: it answers → SERVER DOWN, it fails too → OFFLINE. Idle in front for 30 s: one
+small request to `/api/start`; in the background nothing. What he sees (`lib/ui/net.dart`): the chip in every top bar (`Top`), a tap –
+each server apart and "Check now"; one line under the top bar (`Screen`) only for slow / reconnecting / server down / no internet. FALCON
+works only online, as before (nothing is kept to send later). Dart only – a Shorebird patch. Not verified: a real phone.
+
 ## The distance by road (25-11-2026)
 
 His word, with FALCON's "5.9 km away" and Google Maps' 12 km: "app ase ase fake imformation denare tr kahich thik nahi chalnar". Both points
