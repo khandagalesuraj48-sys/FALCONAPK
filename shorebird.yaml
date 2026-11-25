@@ -1,0 +1,5 @@
+# (25-11-2026, his word: "falcon pn same updet system banwychi aahe") FALCON's id in Shorebird (organization "Sketchline") – made by
+# `shorebird init` (.github/workflows/shorebird-init.yml). Not a secret: it is inside every app file.
+# It is put into pubspec.yaml's assets ONLY by the build of FALCON's own app (tool/shorebird_asset.sh) – never in the repository:
+# RCL's ERP / HR app has FALCON's code inside as a package, and one more asset there would stop the ERP's Shorebird patches.
+app_id: 87ab41cb-ddfa-4912-8ec3-2e3b8b2fc9a7

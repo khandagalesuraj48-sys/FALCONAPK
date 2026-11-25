@@ -1,7 +1,11 @@
 # FALCON's Android app file (APK), built on every push: the app is checked (analyze, tests) and built.
-#   * main (a pull request merged – his yes): a GitHub Release ("Latest") – the file to install the first time, and what the app's own
-#     update looks at (lib/core/update.dart): the file for every phone, one file per processor (a phone's update downloads only its own),
-#     their fingerprints and the build number in the notes. Only with FALCON's permanent signing key – never the debug key.
+#   * (25-11-2026, his word: "falcon pn same updet system banwychi aahe" – as the ERP app) a merge into main is only checked and built –
+#     nothing goes to a phone by itself any more. To send it (Actions):
+#       – a NEW APP FILE: build → Run workflow on main ("Publish" ticked): Shorebird builds it (shorebird release – so it can take patches
+#         later) and it becomes a GitHub Release ("Latest") – the file to install the first time, and what the app's own update looks at
+#         (lib/core/update.dart): the file for every phone, one file per processor (made from Shorebird's file, tool/abi_apks.sh), their
+#         fingerprints and the build number in the notes. Only with FALCON's permanent signing key – never the debug key;
+#       – a fix of the Dart code only, WITHOUT a new app file: patch → Run workflow (patch.yml).
 #   * another branch: a TEST build (a pre-release) – to try a change on a phone before it is merged; the app never offers it.
 # The settings come from GitHub → Settings → Secrets and variables → Actions:
 #   Variables (or Secrets): FALCON_SUPABASE_URL, FALCON_SUPABASE_KEY (the PUBLISHABLE key – public by design; a SECRET key there stops
@@ -15,17 +19,31 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      notes:
+        description: 'What is new (shown in the app''s update question) – empty: the words of the last merged pull request'
+        required: false
+        default: ''
+      publish:
+        description: 'Publish the new app file (untick: only build and check – nothing goes out)'
+        type: boolean
+        required: false
+        default: true
 permissions:
   contents: write
+# a release (Run workflow) is never stopped half-way, and never runs beside a patch; a check of a push is replaced by the newer push
 concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'workflow_dispatch' && 'falcon-shorebird' || format('build-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       BN: ${{ github.run_number }}
+      # (25-11-2026) Run workflow on main = a new app file built by Shorebird
+      SB_REL: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+      SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -55,6 +73,7 @@ jobs:
             keytool -genkeypair -keystore "$K/debug.jks" -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 30 -alias androiddebugkey \
               -storepass "$DP" -keypass "$DP" -dname "CN=Android Debug, O=Android, C=US" >/dev/null 2>&1
             printf "FALCON_KEYSTORE_PATH=%s\nFALCON_KEYSTORE_PASSWORD=%s\nFALCON_KEY_ALIAS=androiddebugkey\nFALCON_KEY_PASSWORD=%s\n" "$K/debug.jks" "$DP" "$DP" >> "$GITHUB_ENV"
+            if [ "$SB_REL" = "true" ]; then echo "::error::A new app file needs FALCON's permanent signing key – add FALCON_SUPABASE_SECRET (GitHub → Settings → Secrets)."; exit 1; fi
             exit 0
           fi
           echo "::add-mask::$SB_SECRET"
@@ -86,6 +105,22 @@ jobs:
             echo "FALCON_KEY_ALIAS=$(grep '^keyAlias=' "$K/key.properties" | cut -d= -f2-)"
             echo "FALCON_KEY_PASSWORD=$(grep '^keyPassword=' "$K/key.properties" | cut -d= -f2-)"
           } >> "$GITHUB_ENV"
+      # (25-11-2026) a new app file: Shorebird, and the patch-signing key (the public half goes into the app; a phone takes only a patch
+      # signed with its private half – tool/shorebird_keys.sh, kept in the private bucket app-keys of FALCON's Supabase)
+      - uses: shorebirdtech/setup-shorebird@v1
+        if: env.SB_REL == 'true'
+        with:
+          cache: true
+      - name: Shorebird – its key and the patch-signing key
+        if: env.SB_REL == 'true'
+        env:
+          SB_URL: ${{ vars.FALCON_SUPABASE_URL || secrets.FALCON_SUPABASE_URL }}
+          SB_KEY: ${{ secrets.FALCON_SUPABASE_SECRET }}
+        run: |
+          if [ -z "$SHOREBIRD_TOKEN" ]; then echo "::error::Add SHOREBIRD_TOKEN (GitHub → this repository → Settings → Secrets and variables → Actions)."; exit 1; fi
+          echo "::add-mask::$SB_KEY"; export SB_URL="${SB_URL%/}"
+          bash tool/shorebird_keys.sh "$RUNNER_TEMP/sbkeys"
+          bash tool/shorebird_asset.sh
       - name: Android app – the file for every phone and one file per processor (the same build number)
         env:
           # (23-11-2026) taken from Variables, or from Secrets when they were put there
@@ -119,6 +154,23 @@ jobs:
               --dart-define=FALCON_COMPANY="$COMPANY" \
               --dart-define=FALCON_VERSION="$V"
           }
+          if [ "$SB_REL" = "true" ]; then
+            # (25-11-2026) Shorebird builds the one app file (a release it can patch later); the files per processor are made from it
+            DRY=""; [ "${{ inputs.publish }}" = "true" ] || DRY="--dry-run"
+            shorebird release android --artifact apk --no-confirm $DRY --flutter-version=3.50.1 --target-platform android-arm,android-arm64 \
+              --build-name="$V" --build-number="$BN" --public-key-path="$RUNNER_TEMP/sbkeys/patch-public.pem" $GM \
+              --dart-define=FALCON_SUPABASE_URL="$SB_URL" \
+              --dart-define=FALCON_SUPABASE_KEY="$SB_KEY" \
+              --dart-define=FALCON_SERVER="$SERVER" \
+              --dart-define=FALCON_COMPANY="$COMPANY" \
+              --dart-define=FALCON_VERSION="$V"
+            cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-$BN.apk"
+            bash tool/abi_apks.sh "out/FALCON-$V-$BN.apk" "$V" "$BN"
+            [ -z "$DRY" ] && echo "::notice::Shorebird release $V+$BN made – patches: Actions → patch." || echo "::notice::Checked only (--dry-run): nothing was released."
+            for f in out/*.apk; do echo "::notice::$f: $(( $(stat -c %s "$f") / 1048576 )) MB"; done
+            echo "APK=out/FALCON-$V-$BN.apk" >> "$GITHUB_ENV"
+            exit 0
+          fi
           build --target-platform android-arm,android-arm64
           cp build/app/outputs/flutter-apk/app-release.apk "out/FALCON-$V-$BN.apk"
           for a in arm64-v8a:android-arm64 armeabi-v7a:android-arm; do
@@ -148,9 +200,11 @@ jobs:
           echo "KEY=$KEY" >> "$GITHUB_ENV"
       - name: The release's notes (what is new, the build number and the fingerprints – read by the app's update)
         env:
-          MSG: ${{ github.event.head_commit.message }}
+          MSG: ${{ inputs.notes || github.event.head_commit.message }}
         run: |
           V="$VER"
+          # (25-11-2026) a release by Run workflow without words: the words of the last merged pull request
+          [ -n "$MSG" ] || MSG=$(git log -1 --format=%B)
           s() { sha256sum "$1" | cut -d' ' -f1; }
           NEW=$(printf '%s\n' "$MSG" | awk 'NR==1 && /^Merge pull request/ {skip=1; next} skip && NF==0 {next} {print}' | grep -v -E '^(Co-Authored-By|Claude-Session):' | sed '/^[[:space:]]*$/d' | head -12)
           {
@@ -183,11 +237,11 @@ jobs:
           make_latest: false
           files: ${{ env.APK }}
           body_path: notes.md
-      - name: Release (main – only with the permanent key)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.KEY == 'debug'
-        run: echo "::warning::main is built with the debug key – NOT released (add FALCON_SUPABASE_SECRET; the next merge is released)."
-      - name: Release (main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.KEY == 'permanent'
+      - name: main is checked – nothing is sent by a merge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "::notice::main is checked and built – nothing went to a phone. To send it – a new app file – Actions → build → Run workflow (main); a Dart fix without a new file – Actions → patch."
+      - name: Release (Run workflow on main – only with the permanent key)
+        if: env.SB_REL == 'true' && inputs.publish && env.KEY == 'permanent'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VER }}-${{ github.run_number }}

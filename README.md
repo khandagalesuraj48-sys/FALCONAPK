@@ -15,10 +15,25 @@ on FALCON's own database and server (the same rules as the web: `khandagalesuraj
 
 ## The APK
 GitHub → Actions → "build": every push builds `FALCON-<version>-<build>.apk` and one file per processor (`.arm64-v8a.apk`,
-`.armeabi-v7a.apk` – the same build number); a branch's push is a TEST build (a pre-release); a merge into `main` is the latest
-Release – only when signed with FALCON's permanent key. Settings: GitHub → Settings → Secrets and variables → Actions →
+`.armeabi-v7a.apk` – the same build number); a branch's push is a TEST build (a pre-release); a Release (latest) is made by Run
+workflow on `main` (below – Shorebird) – only when signed with FALCON's permanent key. Settings: GitHub → Settings → Secrets and variables → Actions →
 **Variables** `FALCON_SUPABASE_URL`, `FALCON_SUPABASE_KEY` (publishable), `FALCON_SERVER`; **Secret** `FALCON_SUPABASE_SECRET` (a
 secret key of FALCON's Supabase – used only by the build to keep the signing key in the private bucket `app-keys`, made once).
+
+## Shorebird – a fix without a new app file (25-11-2026, his word: "falcon pn same updet system banwychi aahe" – as the ERP app)
+* **A merge into `main` sends nothing by itself any more** – it is checked and built only.
+* **A new app file:** Actions → **build** → Run workflow on `main` ("Publish" ticked; unticked = build and check only). Shorebird builds the
+  one file (`shorebird release`, FALCON's Shorebird id in `shorebird.yaml`), the files per processor are made from it (`tool/abi_apks.sh`,
+  each entry byte for byte Shorebird's), and it is the latest Release – the app's own update offers it as before.
+* **A fix of the Dart code only:** merge it, then Actions → **patch** → Run workflow (empty release = the latest one). Phones on that
+  release take it at an opening and use it from the next one – no update. A change of a plugin, native code, a permission or a picture /
+  font is refused there: that needs a new app file. Gone wrong: Shorebird console → FALCON → the release → the patch → Roll back.
+* The patch-signing key: made once by the first Shorebird release, kept only in the private bucket `app-keys` of FALCON's Supabase
+  (`shorebird-patch-private.pem` / `-public.pem`, `tool/shorebird_keys.sh`) – download a copy and keep it offline; lost = no patch for
+  the releases made with it. `SHOREBIRD_TOKEN` (a key of the Shorebird service account) is a GitHub secret, never in a file or chat.
+* `shorebird.yaml` goes into the app's assets only in these builds (`tool/shorebird_asset.sh`), never in `pubspec.yaml` – RCL's ERP / HR
+  app has this code inside as a package, and one more asset there would stop the ERP's own patches.
+* Phones get patches only from a Shorebird release – the first one is one more update (the last one needed for a Dart fix).
 
 ## The update from inside the app (23-11-2026 – like the ERP app)
 At every opening the app looks at the latest Release (`lib/core/update.dart`): "Update to …?" (Update / Close, what is new shown);

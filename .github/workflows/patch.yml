@@ -1,0 +1,106 @@
+# PATCH – a fix of FALCON's Dart code sent to the phones WITHOUT a new app file (25-11-2026, his word: "falcon pn same updet system
+# banwychi aahe" – as the ERP app's patch.yml). Run by hand on main (Actions → patch → Run workflow), after the fix is merged:
+#   – it builds FALCON from main and compares it with the release it patches (Shorebird): only Dart code may differ. A change of native
+#     code, a plugin, a permission, the manifest or a picture / font (assets) is REFUSED – that needs a new app file (build → Run workflow);
+#   – signed with the patch-signing key (the private bucket app-keys of FALCON's Supabase, tool/shorebird_keys.sh) – a phone takes no other;
+#   – a phone downloads it in the background at an opening, and it is in force at the next opening;
+#   – a patch that went wrong: Shorebird console → FALCON → the release → the patch → Roll back (the phones go back by themselves).
+# Box "Send the patch" unticked: --dry-run – built and checked, nothing goes out.
+# Needs SHOREBIRD_TOKEN, FALCON_SUPABASE_SECRET and the build's settings. Never in a file, never in chat.
+name: patch
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'The release to patch – <version>+<build>, e.g. 1.0.0+40 (empty: the newest release, "Latest")'
+        required: false
+        default: ''
+      publish:
+        description: 'Send the patch (untick: only build and check – nothing goes out)'
+        type: boolean
+        required: false
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: falcon-shorebird
+  cancel-in-progress: false
+jobs:
+  patch:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: The settings
+        env:
+          SB_SECRET: ${{ secrets.FALCON_SUPABASE_SECRET }}
+        run: |
+          if [ -z "$SHOREBIRD_TOKEN" ]; then echo "::error::Add SHOREBIRD_TOKEN (GitHub → this repository → Settings → Secrets and variables → Actions)."; exit 1; fi
+          if [ -z "$SB_SECRET" ]; then echo "::error::Add FALCON_SUPABASE_SECRET – the patch-signing key is kept in FALCON's Supabase."; exit 1; fi
+      - uses: actions/checkout@v5
+      - name: Which release
+        env:
+          REL_IN: ${{ github.event.inputs.release }}
+        run: |
+          set -e
+          REL="$REL_IN"
+          if [ -z "$REL" ]; then
+            TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+            REL=$(printf '%s' "$TAG" | sed -n 's/^v\([0-9][0-9.]*\)-\([0-9][0-9]*\)$/\1+\2/p')
+          fi
+          [[ "$REL" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] || { echo "::error::\"$REL\" is not a release – give it as <version>+<build>, e.g. 1.0.0+40."; exit 1; }
+          echo "REL=$REL" >> "$GITHUB_ENV"; echo "VER=${REL%%+*}" >> "$GITHUB_ENV"; echo "BN=${REL##*+}" >> "$GITHUB_ENV"
+          echo "::notice::Patching FALCON's release $REL with the code of main ($GITHUB_SHA)"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.1
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Tests (a patch only when they pass)
+        run: flutter test
+      - uses: shorebirdtech/setup-shorebird@v1
+        with:
+          cache: true
+      - name: The patch-signing key (both halves – only in this run)
+        env:
+          SB_URL: ${{ vars.FALCON_SUPABASE_URL || secrets.FALCON_SUPABASE_URL }}
+          SB_KEY: ${{ secrets.FALCON_SUPABASE_SECRET }}
+        run: |
+          echo "::add-mask::$SB_KEY"; export SB_URL="${SB_URL%/}"
+          bash tool/shorebird_keys.sh "$RUNNER_TEMP/sbkeys" private
+          bash tool/shorebird_asset.sh
+      - name: The patch (Shorebird – only the Dart code may differ from the release)
+        env:
+          # the same settings as the release (build.yml) – the build must be the same but for the Dart code
+          SB_URL: ${{ vars.FALCON_SUPABASE_URL || secrets.FALCON_SUPABASE_URL }}
+          SB_KEY: ${{ vars.FALCON_SUPABASE_KEY || secrets.FALCON_SUPABASE_KEY }}
+          SERVER: ${{ vars.FALCON_SERVER || secrets.FALCON_SERVER || 'https://wolf-rcl-erp.vercel.app' }}
+          COMPANY: ${{ vars.FALCON_COMPANY || 'RCL' }}
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+        run: |
+          ROLE=$(printf '%s' "$SB_KEY" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | grep -o '"role":"[a-z_]*"' || true)
+          case "$SB_KEY" in sb_secret_*) ROLE='"role":"service_role"';; esac
+          if printf '%s' "$ROLE" | grep -q service_role; then echo "::error::FALCON_SUPABASE_KEY is Supabase's SECRET key – it must never be in an app."; exit 1; fi
+          GM=""; [ -n "$MAPS_API_KEY" ] && GM="--dart-define=GMAPS=true"
+          DRY=""; [ "${{ inputs.publish }}" = "true" ] || DRY="--dry-run"
+          shorebird patch android --release-version="$REL" --no-confirm $DRY --build-name="$VER" --build-number="$BN" \
+            --public-key-path="$RUNNER_TEMP/sbkeys/patch-public.pem" --private-key-path="$RUNNER_TEMP/sbkeys/patch-private.pem" $GM \
+            --dart-define=FALCON_SUPABASE_URL="$SB_URL" \
+            --dart-define=FALCON_SUPABASE_KEY="$SB_KEY" \
+            --dart-define=FALCON_SERVER="$SERVER" \
+            --dart-define=FALCON_COMPANY="$COMPANY" \
+            --dart-define=FALCON_VERSION="$VER"
+          if [ -z "$DRY" ]; then echo "::notice::Patch sent to FALCON's release $REL – the phones take it at an opening and use it from the next one."; else echo "::notice::Checked only (not sent): the patch for $REL can be made."; fi
+      - name: The key leaves the machine
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/sbkeys"
