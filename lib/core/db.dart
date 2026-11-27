@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
+import 'net.dart' show netHttp;
 import '../ui/kit.dart';
 
 typedef Rec = Map<String, dynamic>;
@@ -62,7 +63,7 @@ Future<Rec> api(String path, Map<String, dynamic> payload, {bool withToken = tru
   if (withToken && s != null) headers['Authorization'] = 'Bearer ${s.accessToken}';
   final http.Response r;
   try {
-    r = await http.post(Uri.parse('${Config.server}$path'), headers: headers, body: jsonEncode(payload)).timeout(const Duration(seconds: 25));
+    r = await netHttp.post(Uri.parse('${Config.server}$path'), headers: headers, body: jsonEncode(payload)).timeout(const Duration(seconds: 25)); // (SNI) measured
   } on TimeoutException {
     throw DbError('The server did not answer – try again.', 'timeout');
   } on SocketException {
